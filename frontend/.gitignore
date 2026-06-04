@@ -1,0 +1,16 @@
+# Dependencias
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Credenciales
+.env
+.env.production
+
+# Logs y temporal
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.DS_Store

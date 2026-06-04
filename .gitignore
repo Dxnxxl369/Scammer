@@ -1,0 +1,38 @@
+# Ignorar archivos sueltos en la raíz
+/*.txt
+/*.png
+/*.html
+/*.ttx
+/*.svg
+/error.txt
+/idmeh.txt
+/IDpro.ttx
+/image.png
+/movil.html
+/musica.png
+/musica.txt
+/notis.html
+/planes.html
+/pp.html
+/scammer.html
+/Scammer.svg
+/web.png
+/yabes.txt
+
+# Ignorar carpetas que no son del proyecto principal
+/aboutsoft/
+/basura/
+/proyecto/
+
+# Ignorar dependencias y entornos (por si acaso)
+venv/
+node_modules/
+.env
+firebase-key.json
+
+# PERMITIR las carpetas del proyecto
+!backend/
+!frontend/
+!mobile/
+!README.md
+!.gitignore

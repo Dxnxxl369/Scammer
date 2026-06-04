@@ -1,0 +1,18 @@
+# Entorno Virtual
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Credenciales y Configuración
+.env
+firebase-key.json
+db.sqlite3
+
+# Otros
+basura/
+error.txt
+*.log
