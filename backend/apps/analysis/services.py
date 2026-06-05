@@ -281,46 +281,51 @@ class AnalisisService:
         import cv2
         import numpy as np
         archivo_video.seek(0)
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
-            temp_video.write(archivo_video.read())
-            temp_path = temp_video.name
-            
-        cap = cv2.VideoCapture(temp_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_skip = max(int(fps), 1) 
         
-        count = 0
-        saved_count = 0
-        last_saved_gray = None
-        frames_extraidos = []
-        
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret: break
-            if count % frame_skip == 0:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                small_gray = cv2.resize(gray, (64, 64))
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
+                temp_video.write(archivo_video.read())
+                temp_path = temp_video.name
                 
-                if last_saved_gray is None:
-                    guardar = True
-                else:
-                    err = np.sum((last_saved_gray.astype("float") - small_gray.astype("float")) ** 2) / (64*64)
-                    guardar = err > threshold
-                        
-                if guardar:
-                    ret_img, buffer = cv2.imencode('.jpg', frame)
-                    if ret_img:
-                        frames_extraidos.append(buffer.tobytes())
-                        last_saved_gray = small_gray
-                        saved_count += 1
-                        
-            count += 1
-            if saved_count >= max_frames: break
+            cap = cv2.VideoCapture(temp_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_skip = max(int(fps), 1) 
             
-        cap.release()
-        try: os.remove(temp_path)
-        except: pass
-        return frames_extraidos
+            count = 0
+            saved_count = 0
+            last_saved_gray = None
+            frames_extraidos = []
+            
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret: break
+                if count % frame_skip == 0:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    small_gray = cv2.resize(gray, (64, 64))
+                    
+                    if last_saved_gray is None:
+                        guardar = True
+                    else:
+                        err = np.sum((last_saved_gray.astype("float") - small_gray.astype("float")) ** 2) / (64*64)
+                        guardar = err > threshold
+                            
+                    if guardar:
+                        ret_img, buffer = cv2.imencode('.jpg', frame)
+                        if ret_img:
+                            frames_extraidos.append(buffer.tobytes())
+                            last_saved_gray = small_gray
+                            saved_count += 1
+                            
+                count += 1
+                if saved_count >= max_frames: break
+                
+            cap.release()
+            return frames_extraidos
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try: os.remove(temp_path)
+                except: pass
 
     @staticmethod
     def analizar_video(id_identificador: str, archivo, ip: Optional[str] = None) -> Analisis:
@@ -377,6 +382,10 @@ class AnalisisService:
         import numpy as np, subprocess, tempfile, os, gc, torch, ssl
         from PIL import Image
 
+        temp_v_path = None
+        temp_raw_audio = None
+        url_v = None
+
         try:
             analisis = Analisis.objects(id=analisis_id).first()
             if not analisis: return
@@ -391,6 +400,7 @@ class AnalisisService:
             ssl._create_default_https_context = ssl._create_unverified_context
             audio_ai_prob, video_ai_prob = 0, 0
             usuario = Usuario.objects(id_supabase=u_id).first()
+            plan = usuario.plan if usuario else 'gratis'
             
             # --- AUDIO ---
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_v:
@@ -406,7 +416,7 @@ class AnalisisService:
                 m_3s = 3 * sr
                 scores_a = []
                 num_segs_total = int(np.ceil(len(audio_data) / m_3s))
-                num_segs = min(num_segs_total, 10) # Reducimos segmentos para no saturar la API
+                num_segs = min(num_segs_total, 10) 
                 
                 for i in range(num_segs):
                     seg = audio_data[i*m_3s : (i+1)*m_3s]
@@ -418,11 +428,9 @@ class AnalisisService:
                     sf.write(buffer_audio, seg, sr, format='WAV')
                     audio_bytes_seg = buffer_audio.getvalue()
 
-                    # Consulta API 1
                     res1 = AnalisisService.query_hf_api("MelodyMachine/Deepfake-audio-detection-V2", audio_bytes_seg)
                     pr1 = next((r['score'] for r in res1 if isinstance(r, dict) and r.get('label', '').lower() in ['fake', 'aivoice', 'spoof', 'label_1']), 0)
                     
-                    # Consulta API 2
                     res2 = AnalisisService.query_hf_api("garystafford/wav2vec2-deepfake-voice-detector", audio_bytes_seg)
                     pr2 = next((r['score'] for r in res2 if isinstance(r, dict) and r.get('label', '').lower() in ['fake', 'label_1', 'synthetic']), 0)
                     
@@ -432,60 +440,39 @@ class AnalisisService:
                 gc.collect()
             except Exception as e: print(f"[BG] Error Audio: {e}")
 
-            # --- VISUAL (Usando OpenAI CLIP vía API) ---
-            # Nota: Para el video mantenemos la extracción de frames pero el análisis de IA es vía API
+            # --- VISUAL ---
             archivo_io = io.BytesIO(archivo_bytes)
             archivo_io.name = nombre
-            f_c1 = AnalisisService.extraer_frames_unicos(archivo_io, max_frames=5, threshold=30.0) # Menos frames para API
+            f_c1 = AnalisisService.extraer_frames_unicos(archivo_io, max_frames=5, threshold=30.0) 
             
             video_scores = []
             for fb in f_c1:
-                # Aquí podrías usar un modelo de detección de Deepfake de video en HF
-                # Como no hay un "pipeline" directo tan estándar como audio, 
-                # usaremos el modelo de Image Classification para deepfakes
                 res_v = AnalisisService.query_hf_api("prithivMLmods/Deep-Fake-Detector-Model", fb)
                 prob_v = next((r['score'] for r in res_v if isinstance(r, dict) and r.get('label', '').lower() in ['fake', 'deepfake']), 0)
                 video_scores.append(prob_v)
             
             if video_scores: video_ai_prob = (sum(video_scores) / len(video_scores)) * 100
 
-                m_embs = []
-                for fb in f_s:
-                    img = Image.open(io.BytesIO(fb))
-                    w, h = img.size
-                    img = img.crop((w*0.15, h*0.15, w*0.85, h*0.85))
-                    inputs = p_clip(images=img, return_tensors="pt")
-                    with torch.no_grad(): out = m_clip.get_image_features(**inputs)
-                    emb = out.image_embeds if hasattr(out, 'image_embeds') else (out.pooler_output if hasattr(out, 'pooler_output') else out)
-                    emb = F.normalize(emb.unsqueeze(0) if emb.ndim == 1 else emb, p=2, dim=-1)
-                    if not m_embs or not any(torch.mm(emb, me.T).item() > 0.88 for me in m_embs):
-                        f_f.append(fb)
-                        m_embs.append(emb)
-                del m_clip, p_clip
-                gc.collect()
-            except: f_f = f_s[:5]
-            
-            for f_idx, fb_data in enumerate(f_f):
-                with open(os.path.join(pi, f"ia_final_{f_idx+1}.jpg"), 'wb') as f:
-                    f.write(fb_data)
-
             # SIGHTENGINE
             api_user = config('SIGHTENGINE_API_USER')
             api_secret = config('SIGHTENGINE_API_SECRET')
-            scores_v = []
-            for i, fb in enumerate(f_f[:5]):
+            scores_se = []
+            for fb in f_c1:
                 r = requests.post('https://api.sightengine.com/1.0/check.json', files={'media': fb}, data={'models': 'genai', 'api_user': api_user, 'api_secret': api_secret}, timeout=20)
                 if r.status_code == 200:
                     p = r.json().get('type', {}).get('ai_generated', 0) * 100
-                    scores_v.append(p)
+                    scores_se.append(p)
                     if p > 70: break
-            video_ai_prob = max(scores_v) if scores_v else 0
+            
+            if scores_se:
+                video_ai_prob = max(video_ai_prob, max(scores_se))
 
             # --- RESULTADO ---
             audio_dom = audio_ai_prob if audio_ai_prob > 50 else (100 - audio_ai_prob)
             audio_lab = "SINTÉTICO" if audio_ai_prob > 50 else "NATURAL"
             video_dom = video_ai_prob if video_ai_prob > 50 else (100 - video_ai_prob)
             video_lab = "SINTÉTICO" if video_ai_prob > 50 else "NATURAL"
+            
             if audio_ai_prob > 50 and video_ai_prob > 50: ver = "DEEPFAKE MULTIMODAL COMPLETO"
             elif audio_ai_prob > 50: ver = "AUDIO SINTÉTICO (VIDEO ORIGINAL)"
             elif video_ai_prob > 50: ver = "MANIPULACIÓN VISUAL (AUDIO ORIGINAL)"
@@ -500,14 +487,8 @@ class AnalisisService:
             ]
             analisis.save()
             
-            # NOTIFICAR AL USUARIO
-            NotificacionService.crear(
-                u_id=u_id, 
-                t="Análisis Finalizado", 
-                m=f"Video ID #{str(analisis.id)[-6:]} completado: {ver}.", 
-                tp="analisis_pesado",
-                analisis_id=str(analisis.id)
-            )
+            # NOTIFICAR
+            NotificacionService.crear(u_id=u_id, t="Análisis Finalizado", m=f"Video completado: {ver}.", tp="analisis_pesado", analisis_id=str(analisis.id))
 
             # NOTIFICAR ADMINS
             AnalisisService._notificar_admins(
@@ -518,26 +499,26 @@ class AnalisisService:
             )
 
             # Lógica de Retención de Video por Plan
-            # ELITE (Nivel Max) mantiene TODO indefinidamente
             if plan == 'elite':
                 pass
             elif plan == 'pro':
-                # PRO mantiene video+audio si pesan < 4MB (ya subido)
-                # En un entorno real validaríamos el tamaño del archivo_bytes aquí
                 if len(archivo_bytes) > 4 * 1024 * 1024:
                     StorageService.borrar(url_v)
-                    analisis.contenido = "[ELIMINADO: EXCESO DE PESO PARA NIVEL PRO]"
+                    analisis.contenido = "[ELIMINADO: EXCESO DE PESO]"
             else:
-                # FREE y STARTER no mantienen videos físicos
                 StorageService.borrar(url_v)
-                analisis.contenido = "[ELIMINADO POR PROTOCOLO DE NIVEL]"
+                analisis.contenido = "[ELIMINADO POR PROTOCOLO]"
             
             analisis.save()
-            
-            for p in [temp_v_path, temp_raw_audio]:
-                if os.path.exists(p): os.remove(p)
         except Exception as e:
             BitacoraService.registrar(u_id, 'Error BG Video', 'Multimedia', ip, 'ERROR', str(e))
+        finally:
+            if temp_v_path and os.path.exists(temp_v_path):
+                try: os.remove(temp_v_path)
+                except: pass
+            if temp_raw_audio and os.path.exists(temp_raw_audio):
+                try: os.remove(temp_raw_audio)
+                except: pass
 
     @staticmethod
     def analizar_audio(id_identificador: str, archivo, ip: Optional[str] = None) -> Analisis:
