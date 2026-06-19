@@ -1,30 +1,16 @@
-// This is a basic Flutter widget test.
+// Smoke test mínimo del proyecto.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// El test por defecto de la plantilla (contador) no aplica a esta app, así que
+// se reemplaza por una verificación básica de que el árbol de widgets construye.
+// Para probar la app real (ScammerApp) hay que envolverla en su MultiProvider y
+// mockear FirebaseService/ApiService; eso queda pendiente como test de integración.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:scammer_mobile/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('smoke: construye un árbol de widgets básico', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+    expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

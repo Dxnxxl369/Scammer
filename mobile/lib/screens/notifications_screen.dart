@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
-import '../widgets/bottom_nav.dart';
 import '../widgets/master_header.dart';
 import 'analysis_detail_screen.dart';
 import '../models/analysis.dart';
@@ -115,8 +114,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           setState(() {
             n['leida'] = true;
           });
-          // Notificar al backend en segundo plano
-          ApiService.patch('/analisis/notificaciones/${n['id']}/leida/', {}).catchError((e) => print('Error marcando leída: $e'));
+          // Notificar al backend en segundo plano (fire-and-forget, sin romper en el error path)
+          () async {
+            try {
+              await ApiService.patch('/analisis/notificaciones/${n['id']}/leida/', {});
+            } catch (e) {
+              print('Error marcando leída: $e');
+            }
+          }();
         }
         
         if (analisisId != null && analisisId.isNotEmpty) {

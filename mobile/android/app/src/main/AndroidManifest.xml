@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Red: el backend se consume por HTTP -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Notificaciones push (requerido en Android 13+/API 33) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <application
         android:label="Scammer"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         
         <!-- Configuración de Firebase Notificaciones por Defecto -->
         <meta-data
@@ -11,6 +18,9 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@android:color/transparent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="scammer_default_channel" />
 
         <activity
             android:name=".MainActivity"
@@ -34,8 +44,8 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- DEEP LINK: Para retorno de Google/Supabase Auth -->
-            <intent-filter android:autoVerify="true">
+            <!-- DEEP LINK: Para retorno de Google/Supabase Auth (esquema propio: sin autoVerify) -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

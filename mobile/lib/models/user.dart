@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 class UserProfile {
   final String id;
   final String email;

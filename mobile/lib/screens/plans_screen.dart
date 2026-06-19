@@ -8,8 +8,6 @@ import '../widgets/bottom_nav.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:flutter/services.dart';
 import '../widgets/master_header.dart';
-import 'dashboard_screen.dart';
-import 'history_screen.dart';
 
 class PlansScreen extends StatefulWidget {
   final bool fromProfile;

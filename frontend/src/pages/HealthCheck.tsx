@@ -45,7 +45,7 @@ export default function HealthCheck() {
   const idSesionAnonimo = anonimoService.obtenerDeCookie()
 
   useEffect(() => {
-    const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+    const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8002/api'
     fetch(`${apiUrl}/health/`)
       .then((res) => res.json())
       .then((json: HealthData) => setData(json))

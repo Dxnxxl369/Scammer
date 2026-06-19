@@ -92,7 +92,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   Future<void> _savePrefs() async {
     setState(() => _isSaving = true);
     try {
-      final response = await ApiService.patch('/analisis/notificaciones/preferencias/', _prefs!);
+      final response = await ApiService.patch('/analisis/notificaciones/preferencias/', _prefs);
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

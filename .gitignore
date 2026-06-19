@@ -29,6 +29,8 @@ venv/
 node_modules/
 .env
 firebase-key.json
+.claude/
+.vscode/
 
 # PERMITIR las carpetas del proyecto
 !backend/

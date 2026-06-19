@@ -7,6 +7,15 @@ import sys
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+    # --- Desarrollo: puerto fijo 8002 ---
+    # Si se ejecuta `runserver` sin dirección/puerto explícito, escuchar en
+    # 0.0.0.0:8002 (accesible como localhost:8002 desde el navegador y como
+    # 192.168.x.x:8002 desde un dispositivo físico en la misma red).
+    if len(sys.argv) > 1 and sys.argv[1] == 'runserver':
+        if not any(not arg.startswith('-') for arg in sys.argv[2:]):
+            sys.argv.append('0.0.0.0:8002')
+
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

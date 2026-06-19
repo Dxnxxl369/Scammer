@@ -45,5 +45,35 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- HTTP en claro hacia el backend de pruebas (IP LAN). En producción: usar HTTPS y quitar esto. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Notificaciones push en segundo plano (FCM/APNs) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
+	<!-- Descripciones de privacidad para file_picker / video / share -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>La app necesita acceso a tu galería para adjuntar fotos y videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>La app necesita permiso para guardar archivos en tu galería.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>La app necesita la cámara para capturar fotos y videos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>La app necesita el micrófono para grabar video con audio.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
 </dict>
 </plist>

@@ -8,7 +8,6 @@ import '../widgets/master_header.dart';
 import 'dashboard_screen.dart';
 import 'history_screen.dart';
 import 'plans_screen.dart';
-import 'notifications_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});

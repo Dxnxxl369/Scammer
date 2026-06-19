@@ -3,8 +3,13 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // IP de red local proporcionada por el usuario para pruebas con dispositivo físico
-  static const String baseUrl = 'http://192.168.3.39:8000/api';
+  // Base URL del backend. Sobreescribible por build sin tocar código:
+  //   flutter run --dart-define=API_BASE_URL=https://api.tudominio.com/api
+  // Por defecto: IP de red local para pruebas con dispositivo físico.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://192.168.3.39:8002/api',
+  );
 
   static Future<Map<String, String>> getHeaders() async {
     final prefs = await SharedPreferences.getInstance();

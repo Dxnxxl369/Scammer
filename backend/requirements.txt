@@ -26,3 +26,9 @@ transformers
 torch
 librosa
 firebase-admin
+
+# Importados directamente por el código pero antes solo presentes de forma transitiva.
+# Se declaran para que una reinstalación limpia (pip install -r) no los omita:
+Pillow       # PIL: manejo de imágenes (apps/analysis/services.py)
+soundfile    # E/S de audio WAV (apps/analysis/services.py); antes solo vía librosa
+asgiref      # usado directo en consumers/services/views; antes solo vía channels/daphne/django
