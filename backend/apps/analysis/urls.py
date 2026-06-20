@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     AnalizarTextoView, 
+    AnalizarCodigoView, 
     AnalizarImagenView, 
     AnalizarAudioView,
     AnalizarVideoView,
@@ -15,6 +16,7 @@ from .views import (
 
 urlpatterns = [
     path('texto/', AnalizarTextoView.as_view(), name='analizar_texto'),
+    path('codigo/', AnalizarCodigoView.as_view(), name='analizar_codigo'),
     path('imagen/', AnalizarImagenView.as_view(), name='analizar_imagen'),
     path('audio/', AnalizarAudioView.as_view(), name='analizar_audio'),
     path('video/', AnalizarVideoView.as_view(), name='analizar_video'),

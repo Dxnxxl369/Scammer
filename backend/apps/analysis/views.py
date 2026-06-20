@@ -56,6 +56,25 @@ class AnalizarTextoView(AnalisisBaseView):
         except Exception as e:
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class AnalizarCodigoView(AnalisisBaseView):
+    def post(self, request):
+        identificador = self.obtener_identificador(request)
+        if not identificador:
+            return respuesta_error('IDENTIFICADOR_REQUERIDO', 'No hay sesión activa', status.HTTP_401_UNAUTHORIZED)
+        codigo = request.data.get('codigo')
+        if not codigo or not str(codigo).strip():
+            return respuesta_error('DATOS_FALTANTES', 'Se requiere código', status.HTTP_400_BAD_REQUEST)
+        lenguaje = request.data.get('lenguaje')
+        try:
+            from .code_detector import analizar_codigo, ESTADO_MOTOR
+            resultado = analizar_codigo(identificador, str(codigo), lenguaje, self.obtener_ip(request))
+            if resultado.get('estado') == ESTADO_MOTOR:
+                return respuesta_error('MOTOR_NO_DISPONIBLE', resultado.get('detalles', 'Motor no disponible'), status.HTTP_503_SERVICE_UNAVAILABLE)
+            return respuesta_exitosa(resultado)
+        except Exception as e:
+            return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class AnalizarImagenView(AnalisisBaseView):
     def post(self, request):
         identificador = self.obtener_identificador(request)

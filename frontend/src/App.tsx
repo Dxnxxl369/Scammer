@@ -9,6 +9,7 @@ import { Login } from './pages/Login'
 import { Registro } from './pages/Registro'
 import { Planes } from './pages/Planes'
 import { AnalysisCenter } from './pages/AnalysisCenter'
+import { DetectorCodigo } from './pages/DetectorCodigo'
 import { Perfil } from './pages/Perfil'
 import { Historial } from './pages/Historial'
 import { Borradores } from './pages/Borradores'
@@ -53,6 +54,7 @@ function AppContent() {
       <Route path="/planes" element={<Planes />} />
       <Route path="/recuperar-password" element={<RecuperarPassword />} />
       <Route path="/dashboard" element={<AnalysisCenter />} />
+      <Route path="/detector-codigo" element={<ProtectedRoute><DetectorCodigo /></ProtectedRoute>} />
       <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
       <Route path="/historial" element={<ProtectedRoute><Historial /></ProtectedRoute>} />
       <Route path="/borradores" element={<ProtectedRoute><Borradores /></ProtectedRoute>} />
