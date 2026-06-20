@@ -230,6 +230,201 @@ class AdminService:
         return usuario, None
 
     @staticmethod
+    def obtener_usuario(id_supabase: str) -> tuple[Optional[Usuario], Optional[str]]:
+        usuario = Usuario.objects(id_supabase=id_supabase).first()
+        if not usuario:
+            return None, 'NO_ENCONTRADO'
+        return usuario, None
+
+    @staticmethod
+    def crear_usuario(
+        correo: str,
+        nombre_usuario: str,
+        password: str,
+        nombre_completo: Optional[str] = None,
+        rol: str = 'usuario',
+        plan: str = 'gratis',
+        pais: str = 'BO',
+        ip: Optional[str] = None,
+    ) -> tuple[Optional[Usuario], Optional[str]]:
+        """
+        Crea un usuario completo: primero en Supabase Auth (para que pueda
+        iniciar sesion) y luego en MongoDB con el rol y plan asignados por el
+        administrador. Si falla la creacion en Mongo, revierte el alta en
+        Supabase para no dejar usuarios huerfanos.
+        """
+        from . import supabase_admin
+
+        correo_norm = correo.lower().strip()
+        username_norm = nombre_usuario.lower().strip()
+
+        if rol not in ['administrador', 'usuario']:
+            return None, 'ROL_INVALIDO'
+        if plan not in ['gratis', 'starter', 'pro', 'elite']:
+            return None, 'PLAN_INVALIDO'
+
+        # Validaciones de unicidad en Mongo antes de tocar Supabase
+        if Usuario.objects(correo=correo_norm).first():
+            return None, 'CORREO_DUPLICADO'
+        if Usuario.objects(nombre_usuario=username_norm).first():
+            return None, 'NOMBRE_USUARIO_DUPLICADO'
+
+        # 1) Crear en Supabase Auth
+        id_supabase, error = supabase_admin.crear_usuario_auth(
+            correo=correo_norm,
+            password=password,
+            metadata={'nombre_usuario': username_norm, 'full_name': nombre_completo or username_norm},
+        )
+        if error:
+            return None, f'SUPABASE: {error}'
+
+        # 2) Crear en MongoDB
+        try:
+            usuario = Usuario(
+                id_supabase=id_supabase,
+                correo=correo_norm,
+                nombre_usuario=username_norm,
+                nombre_completo=nombre_completo,
+                rol=rol,
+                plan=plan,
+                pais=pais,
+            )
+            usuario.save()
+        except (NotUniqueError, ValidationError) as e:
+            # Rollback: eliminar el usuario recien creado en Supabase
+            supabase_admin.eliminar_usuario_auth(id_supabase)
+            return None, f'VALIDACION: {str(e)}'
+
+        # 3) Bitacora + notificacion (best-effort, no debe romper el alta)
+        try:
+            from apps.analysis.services import BitacoraService, NotificacionService
+            BitacoraService.registrar(
+                usuario_id=usuario.id_supabase,
+                accion='Alta de Usuario (Admin)',
+                modulo='Administracion',
+                ip=ip,
+                detalles=f'Admin creo a {username_norm} con rol {rol} y plan {plan}',
+            )
+            NotificacionService.crear(
+                u_id=usuario.id_supabase,
+                t='Cuenta creada',
+                m=f'Un administrador ha creado tu cuenta con rol {rol.upper()}.',
+                tp='sistema',
+            )
+        except Exception as e:
+            print(f'[ADMIN SERVICE] Error auxiliar al crear usuario: {e}')
+
+        return usuario, None
+
+    @staticmethod
+    def actualizar_usuario(
+        id_supabase: str,
+        datos: dict,
+        ip: Optional[str] = None,
+    ) -> tuple[Optional[Usuario], Optional[str]]:
+        """
+        Actualiza un usuario existente. Sincroniza correo/contrasena con
+        Supabase cuando corresponde y valida unicidad de correo/usuario.
+        """
+        from . import supabase_admin
+
+        usuario = Usuario.objects(id_supabase=id_supabase).first()
+        if not usuario:
+            return None, 'NO_ENCONTRADO'
+
+        nuevo_correo = datos.get('correo')
+        nuevo_username = datos.get('nombre_usuario')
+        nuevo_password = datos.get('password')
+        nuevo_rol = datos.get('rol')
+        nuevo_plan = datos.get('plan')
+
+        if nuevo_rol is not None and nuevo_rol not in ['administrador', 'usuario']:
+            return None, 'ROL_INVALIDO'
+        if nuevo_plan is not None and nuevo_plan not in ['gratis', 'starter', 'pro', 'elite']:
+            return None, 'PLAN_INVALIDO'
+
+        # Unicidad si cambian correo o nombre de usuario
+        if nuevo_correo:
+            correo_norm = nuevo_correo.lower().strip()
+            existente = Usuario.objects(correo=correo_norm).first()
+            if existente and existente.id_supabase != id_supabase:
+                return None, 'CORREO_DUPLICADO'
+        if nuevo_username:
+            username_norm = nuevo_username.lower().strip()
+            existente = Usuario.objects(nombre_usuario=username_norm).first()
+            if existente and existente.id_supabase != id_supabase:
+                return None, 'NOMBRE_USUARIO_DUPLICADO'
+
+        # Sincronizar con Supabase si cambia correo o password
+        if nuevo_correo or nuevo_password:
+            ok, error = supabase_admin.actualizar_usuario_auth(
+                id_supabase,
+                correo=nuevo_correo.lower().strip() if nuevo_correo else None,
+                password=nuevo_password or None,
+            )
+            if error:
+                return None, f'SUPABASE: {error}'
+
+        campos_permitidos = ['nombre_completo', 'nombre_usuario', 'correo', 'rol', 'plan', 'pais', 'activo', 'bloqueado']
+        for campo, valor in datos.items():
+            if campo in campos_permitidos and valor is not None:
+                setattr(usuario, campo, valor)
+
+        try:
+            usuario.save()
+        except (NotUniqueError, ValidationError) as e:
+            return None, f'VALIDACION: {str(e)}'
+
+        try:
+            from apps.analysis.services import BitacoraService
+            BitacoraService.registrar(
+                usuario_id=usuario.id_supabase,
+                accion='Edicion de Usuario (Admin)',
+                modulo='Administracion',
+                ip=ip,
+                detalles=f'Admin actualizo a {usuario.nombre_usuario}',
+            )
+        except Exception as e:
+            print(f'[ADMIN SERVICE] Error auxiliar al actualizar usuario: {e}')
+
+        return usuario, None
+
+    @staticmethod
+    def eliminar_usuario(id_supabase: str, ip: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        """
+        Elimina un usuario de Supabase Auth y de MongoDB.
+        """
+        from . import supabase_admin
+
+        usuario = Usuario.objects(id_supabase=id_supabase).first()
+        if not usuario:
+            return False, 'NO_ENCONTRADO'
+
+        nombre = usuario.nombre_usuario
+
+        # 1) Eliminar de Supabase (idempotente: 404 se trata como exito)
+        ok, error = supabase_admin.eliminar_usuario_auth(id_supabase)
+        if error:
+            return False, f'SUPABASE: {error}'
+
+        # 2) Eliminar de Mongo
+        usuario.delete()
+
+        try:
+            from apps.analysis.services import BitacoraService
+            BitacoraService.registrar(
+                usuario_id=id_supabase,
+                accion='Baja de Usuario (Admin)',
+                modulo='Administracion',
+                ip=ip,
+                detalles=f'Admin elimino a {nombre}',
+            )
+        except Exception as e:
+            print(f'[ADMIN SERVICE] Error auxiliar al eliminar usuario: {e}')
+
+        return True, None
+
+    @staticmethod
     def estadisticas() -> dict:
         return {
             'total_usuarios': Usuario.objects.count(),

@@ -31,6 +31,43 @@ export interface Estadisticas {
   activos: number
 }
 
+export interface CrearUsuarioPayload {
+  correo: string
+  nombre_usuario: string
+  password: string
+  nombre_completo?: string
+  rol: 'administrador' | 'usuario'
+  plan: 'gratis' | 'starter' | 'pro' | 'elite'
+  pais?: string
+}
+
+export interface ActualizarUsuarioPayload {
+  correo?: string
+  nombre_usuario?: string
+  password?: string
+  nombre_completo?: string
+  rol?: 'administrador' | 'usuario'
+  plan?: 'gratis' | 'starter' | 'pro' | 'elite'
+  pais?: string
+  activo?: boolean
+  bloqueado?: boolean
+}
+
+export interface ResultadoOperacion {
+  ok: boolean
+  mensaje?: string
+  usuario?: Usuario
+}
+
+function extraerError(err: unknown): string {
+  const e = err as { response?: { data?: { error?: { mensaje?: string }; mensaje?: string } } }
+  return (
+    e?.response?.data?.error?.mensaje ||
+    e?.response?.data?.mensaje ||
+    'Error de conexión con el servidor.'
+  )
+}
+
 export const adminService = {
   async listarUsuarios(filtros: FiltrosUsuarios = {}): Promise<ListadoUsuarios | null> {
     const params = new URLSearchParams()
@@ -71,6 +108,40 @@ export const adminService = {
       await api.patch(`/admin/usuarios/${idSupabase}/rol/`, { rol })
       return true
     } catch { return false }
+  },
+
+  async crearUsuario(payload: CrearUsuarioPayload): Promise<ResultadoOperacion> {
+    try {
+      const r = await api.post<RespuestaApi<Usuario>>('/admin/usuarios/', payload)
+      return { ok: true, mensaje: r.data.mensaje, usuario: r.data.datos }
+    } catch (err) {
+      return { ok: false, mensaje: extraerError(err) }
+    }
+  },
+
+  async actualizarUsuario(idSupabase: string, payload: ActualizarUsuarioPayload): Promise<ResultadoOperacion> {
+    try {
+      const r = await api.patch<RespuestaApi<Usuario>>(`/admin/usuarios/${idSupabase}/`, payload)
+      return { ok: true, mensaje: r.data.mensaje, usuario: r.data.datos }
+    } catch (err) {
+      return { ok: false, mensaje: extraerError(err) }
+    }
+  },
+
+  async eliminarUsuario(idSupabase: string): Promise<ResultadoOperacion> {
+    try {
+      const r = await api.delete<RespuestaApi>(`/admin/usuarios/${idSupabase}/`)
+      return { ok: true, mensaje: r.data.mensaje }
+    } catch (err) {
+      return { ok: false, mensaje: extraerError(err) }
+    }
+  },
+
+  async obtenerUsuario(idSupabase: string): Promise<Usuario | null> {
+    try {
+      const r = await api.get<RespuestaApi<Usuario>>(`/admin/usuarios/${idSupabase}/`)
+      return r.data.datos || null
+    } catch { return null }
   },
 
   async estadisticas(): Promise<Estadisticas | null> {

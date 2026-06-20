@@ -15,6 +15,7 @@ from .views import (
 )
 from .views_admin import (
     ListarUsuariosView,
+    DetalleUsuarioView,
     BloquearUsuarioView,
     DesbloquearUsuarioView,
     CambiarPlanView,
@@ -36,6 +37,7 @@ urlpatterns = [
     path('anonimos/sesion/<str:id_sesion>/', SesionAnonimaView.as_view(), name='sesion_anonima'),
     path('anonimos/sesion/<str:id_sesion>/intento/', IncrementarIntentosAnonimoView.as_view(), name='incrementar_intentos_anonimo'),
     path('admin/usuarios/', ListarUsuariosView.as_view(), name='admin_listar_usuarios'),
+    path('admin/usuarios/<str:id_supabase>/', DetalleUsuarioView.as_view(), name='admin_detalle_usuario'),
     path('admin/usuarios/<str:id_supabase>/bloquear/', BloquearUsuarioView.as_view(), name='admin_bloquear'),
     path('admin/usuarios/<str:id_supabase>/desbloquear/', DesbloquearUsuarioView.as_view(), name='admin_desbloquear'),
     path('admin/usuarios/<str:id_supabase>/plan/', CambiarPlanView.as_view(), name='admin_cambiar_plan'),

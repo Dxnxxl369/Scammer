@@ -7,6 +7,8 @@ vi.mock('../api', () => ({
   api: {
     get: vi.fn(),
     patch: vi.fn(),
+    post: vi.fn(),
+    delete: vi.fn(),
   },
 }))
 
@@ -70,5 +72,56 @@ describe('adminService', () => {
     mockApi.get = vi.fn().mockRejectedValue(new Error('network'))
     const result = await adminService.estadisticas()
     expect(result).toBeNull()
+  })
+
+  it('crearUsuario hace POST /admin/usuarios/ y retorna ok', async () => {
+    const usuario = { id_supabase: 'uid-9', correo: 'a@b.com', nombre_usuario: 'agente', rol: 'usuario', plan: 'gratis' }
+    mockApi.post = vi.fn().mockResolvedValue({ data: { exito: true, mensaje: 'Usuario creado correctamente', datos: usuario } })
+
+    const res = await adminService.crearUsuario({
+      correo: 'a@b.com', nombre_usuario: 'agente', password: 'secreta123', rol: 'usuario', plan: 'gratis',
+    })
+
+    expect(mockApi.post).toHaveBeenCalledWith('/admin/usuarios/', expect.objectContaining({ correo: 'a@b.com', rol: 'usuario' }))
+    expect(res.ok).toBe(true)
+    expect(res.usuario).toEqual(usuario)
+  })
+
+  it('crearUsuario extrae el mensaje de error del backend', async () => {
+    mockApi.post = vi.fn().mockRejectedValue({ response: { data: { error: { mensaje: 'El correo ya está registrado' } } } })
+    const res = await adminService.crearUsuario({
+      correo: 'a@b.com', nombre_usuario: 'agente', password: 'secreta123', rol: 'usuario', plan: 'gratis',
+    })
+    expect(res.ok).toBe(false)
+    expect(res.mensaje).toBe('El correo ya está registrado')
+  })
+
+  it('actualizarUsuario hace PATCH /admin/usuarios/:id/', async () => {
+    mockApi.patch = vi.fn().mockResolvedValue({ data: { exito: true, mensaje: 'Usuario actualizado', datos: {} } })
+    const res = await adminService.actualizarUsuario('uid-1', { rol: 'administrador' })
+    expect(mockApi.patch).toHaveBeenCalledWith('/admin/usuarios/uid-1/', { rol: 'administrador' })
+    expect(res.ok).toBe(true)
+  })
+
+  it('eliminarUsuario hace DELETE /admin/usuarios/:id/', async () => {
+    mockApi.delete = vi.fn().mockResolvedValue({ data: { exito: true, mensaje: 'Usuario eliminado correctamente' } })
+    const res = await adminService.eliminarUsuario('uid-1')
+    expect(mockApi.delete).toHaveBeenCalledWith('/admin/usuarios/uid-1/')
+    expect(res.ok).toBe(true)
+  })
+
+  it('eliminarUsuario retorna ok=false en error', async () => {
+    mockApi.delete = vi.fn().mockRejectedValue({ response: { data: { error: { mensaje: 'No puedes eliminar tu propia cuenta de administrador.' } } } })
+    const res = await adminService.eliminarUsuario('uid-self')
+    expect(res.ok).toBe(false)
+    expect(res.mensaje).toContain('No puedes eliminar')
+  })
+
+  it('obtenerUsuario hace GET /admin/usuarios/:id/', async () => {
+    const usuario = { id_supabase: 'uid-1', correo: 'x@y.com' }
+    mockApi.get = vi.fn().mockResolvedValue({ data: { exito: true, datos: usuario } })
+    const res = await adminService.obtenerUsuario('uid-1')
+    expect(mockApi.get).toHaveBeenCalledWith('/admin/usuarios/uid-1/')
+    expect(res).toEqual(usuario)
   })
 })

@@ -175,3 +175,124 @@ def test_estadisticas_retorna_conteos_correctos(client: Client, admin_headers):
     assert 'plan_pro' in data
     assert 'bloqueados' in data
     assert data['total_usuarios'] >= 1
+
+
+# ============================================================
+# CRUD de usuarios por el administrador
+# ============================================================
+
+@pytest.mark.django_db
+def test_admin_puede_crear_usuario(client: Client, admin_headers, monkeypatch):
+    import json
+    from apps.authentication import supabase_admin
+    monkeypatch.setattr(
+        supabase_admin, 'crear_usuario_auth',
+        lambda correo, password, metadata=None: ('nuevo-uid-123', None),
+    )
+    resp = client.post(
+        '/api/admin/usuarios/',
+        data=json.dumps({
+            'correo': 'nuevo@test.com',
+            'nombre_usuario': 'nuevoagente',
+            'password': 'secreta123',
+            'rol': 'administrador',
+            'plan': 'pro',
+        }),
+        content_type='application/json',
+        **admin_headers,
+    )
+    assert resp.status_code == 201
+    data = resp.json()['datos']
+    assert data['correo'] == 'nuevo@test.com'
+    assert data['rol'] == 'administrador'
+    assert data['plan'] == 'pro'
+    assert Usuario.objects(id_supabase='nuevo-uid-123').first() is not None
+
+
+@pytest.mark.django_db
+def test_usuario_normal_no_puede_crear(client: Client, user_headers):
+    import json
+    resp = client.post(
+        '/api/admin/usuarios/',
+        data=json.dumps({'correo': 'x@test.com', 'nombre_usuario': 'xuser', 'password': 'secreta123'}),
+        content_type='application/json',
+        **user_headers,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_crear_usuario_correo_duplicado_devuelve_409(client: Client, admin_headers, monkeypatch):
+    import json
+    from apps.authentication import supabase_admin
+    monkeypatch.setattr(supabase_admin, 'crear_usuario_auth', lambda correo, password, metadata=None: ('x', None))
+    crear_usuario('dup-1', 'dup@test.com', 'dupuser')
+    resp = client.post(
+        '/api/admin/usuarios/',
+        data=json.dumps({'correo': 'dup@test.com', 'nombre_usuario': 'otrouser', 'password': 'secreta123'}),
+        content_type='application/json',
+        **admin_headers,
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.django_db
+def test_crear_usuario_password_corta_devuelve_400(client: Client, admin_headers):
+    import json
+    resp = client.post(
+        '/api/admin/usuarios/',
+        data=json.dumps({'correo': 'corto@test.com', 'nombre_usuario': 'cortouser', 'password': '123'}),
+        content_type='application/json',
+        **admin_headers,
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_admin_puede_obtener_detalle_usuario(client: Client, admin_headers):
+    target = crear_usuario('det-1', 'det@test.com', 'detuser')
+    resp = client.get(f'/api/admin/usuarios/{target.id_supabase}/', **admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()['datos']['correo'] == 'det@test.com'
+
+
+@pytest.mark.django_db
+def test_obtener_usuario_inexistente_devuelve_404(client: Client, admin_headers):
+    resp = client.get('/api/admin/usuarios/no-existe/', **admin_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_admin_puede_editar_usuario(client: Client, admin_headers, monkeypatch):
+    import json
+    from apps.authentication import supabase_admin
+    monkeypatch.setattr(supabase_admin, 'actualizar_usuario_auth', lambda *a, **k: (True, None))
+    target = crear_usuario('edit-1', 'edit@test.com', 'edituser')
+    resp = client.patch(
+        f'/api/admin/usuarios/{target.id_supabase}/',
+        data=json.dumps({'rol': 'administrador', 'plan': 'elite', 'nombre_completo': 'Editado'}),
+        content_type='application/json',
+        **admin_headers,
+    )
+    assert resp.status_code == 200
+    target.reload()
+    assert target.rol == 'administrador'
+    assert target.plan == 'elite'
+    assert target.nombre_completo == 'Editado'
+
+
+@pytest.mark.django_db
+def test_admin_puede_eliminar_usuario(client: Client, admin_headers, monkeypatch):
+    from apps.authentication import supabase_admin
+    monkeypatch.setattr(supabase_admin, 'eliminar_usuario_auth', lambda id_supabase: (True, None))
+    target = crear_usuario('del-1', 'del@test.com', 'deluser')
+    resp = client.delete(f'/api/admin/usuarios/{target.id_supabase}/', **admin_headers)
+    assert resp.status_code == 200
+    assert Usuario.objects(id_supabase='del-1').first() is None
+
+
+@pytest.mark.django_db
+def test_admin_no_puede_eliminarse_a_si_mismo(client: Client, admin_headers, admin_usuario):
+    resp = client.delete(f'/api/admin/usuarios/{admin_usuario.id_supabase}/', **admin_headers)
+    assert resp.status_code == 400
+    assert Usuario.objects(id_supabase=admin_usuario.id_supabase).first() is not None
