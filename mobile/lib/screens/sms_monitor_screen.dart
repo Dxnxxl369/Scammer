@@ -30,6 +30,7 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
     super.initState();
     _active = SmsMonitorService.isStarted;
     SmsMonitorService.onAnalyzed = (msg, res) {
+      print('[SMS-MON] (PANTALLA) onAnalyzed recibido: ${msg.address} -> prob=${res?.aiProbability} ${res?.veredicto}');
       if (mounted) setState(() => _feed.insert(0, _Item(msg, res)));
     };
   }
@@ -41,10 +42,12 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
   }
 
   Future<void> _activate() async {
+    print('[SMS-MON] (PANTALLA) usuario tocó ACTIVAR MONITOREO');
     setState(() => _busy = true);
     final ok = await SmsMonitorService.requestPermissions();
     if (!mounted) return;
     setState(() => _busy = false);
+    print('[SMS-MON] (PANTALLA) permisos => $ok');
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PERMISO DE SMS DENEGADO. ACTÍVALO EN AJUSTES.')),
@@ -52,6 +55,7 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
       return;
     }
     SmsMonitorService.start();
+    print('[SMS-MON] (PANTALLA) start() ejecutado, isStarted=${SmsMonitorService.isStarted}');
     setState(() => _active = true);
   }
 

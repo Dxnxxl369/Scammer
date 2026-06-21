@@ -52,19 +52,23 @@ class AnalysisService {
   static Future<({AnalysisResult? result, String? error})> analyzeSms(
       String text, String? sender, {bool auto = false}) async {
     try {
+      print('[SMS-API] -> POST /analisis/sms/  auto=$auto  remitente=$sender  textLen=${text.length}');
       final response = await ApiService.post('/analisis/sms/', {
         'texto': text,
         if (sender != null && sender.trim().isNotEmpty) 'remitente': sender.trim(),
         if (auto) 'auto': true,
       });
+      final cuerpo = response.body.length > 400 ? '${response.body.substring(0, 400)}...' : response.body;
+      print('[SMS-API] <- HTTP ${response.statusCode}  body=$cuerpo');
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['exito'] == true) {
         return (result: AnalysisResult.fromJson(data['datos']), error: null);
       }
       final msg = data['error'] != null ? data['error']['mensaje'] : null;
+      print('[SMS-API] respuesta no exitosa: $msg');
       return (result: null, error: (msg ?? 'No se pudo analizar el SMS.').toString());
     } catch (e) {
-      print("Analyze SMS Error: $e");
+      print("[SMS-API] ❌ EXCEPCIÓN: $e");
       return (result: null, error: 'Error de conexión con el servidor.');
     }
   }
