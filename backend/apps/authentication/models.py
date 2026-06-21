@@ -13,6 +13,9 @@ class Usuario(Document):
     rol = StringField(choices=['administrador', 'usuario'], default='usuario')
     plan = StringField(choices=['gratis', 'starter', 'pro', 'elite'], default='gratis')
     fcm_token = StringField() # Token para notificaciones push de Firebase
+    # Stripe (suscripción)
+    stripe_customer_id = StringField()
+    stripe_subscription_id = StringField()
     pais = StringField(default='BO', max_length=2)
     activo = BooleanField(default=True)
     bloqueado = BooleanField(default=False)

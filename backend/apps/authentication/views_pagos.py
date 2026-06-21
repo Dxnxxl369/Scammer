@@ -105,14 +105,29 @@ class CrearCheckoutView(APIView):
                                    'El administrador aún no definió el precio de este plan',
                                    status.HTTP_400_BAD_REQUEST)
 
+        # Crear (o reutilizar) el cliente de Stripe para este usuario.
+        try:
+            if not usuario.stripe_customer_id:
+                cliente = stripe.Customer.create(
+                    email=usuario.correo,
+                    name=usuario.nombre_usuario,
+                    metadata={'usuario_id': usuario.id_supabase},
+                )
+                usuario.stripe_customer_id = cliente.id
+                usuario.save()
+        except Exception as e:
+            return respuesta_error('STRIPE_ERROR', f'No se pudo crear el cliente: {e}', status.HTTP_502_BAD_GATEWAY)
+
         try:
             session = stripe.checkout.Session.create(
-                mode='payment',
+                mode='subscription',
+                customer=usuario.stripe_customer_id,
                 line_items=[{
                     'price_data': {
                         'currency': cfg.moneda or 'usd',
                         'product_data': {'name': f'Plan {plan.upper()} · Scammer'},
                         'unit_amount': cfg.precio_centavos,
+                        'recurring': {'interval': 'month'},
                     },
                     'quantity': 1,
                 }],
@@ -120,6 +135,7 @@ class CrearCheckoutView(APIView):
                 cancel_url=settings.STRIPE_CANCEL_URL,
                 client_reference_id=usuario.id_supabase,
                 metadata={'usuario_id': usuario.id_supabase, 'plan': plan},
+                subscription_data={'metadata': {'usuario_id': usuario.id_supabase, 'plan': plan}},
             )
         except Exception as e:
             return respuesta_error('STRIPE_ERROR', f'No se pudo crear el checkout: {e}', status.HTTP_502_BAD_GATEWAY)
@@ -154,16 +170,23 @@ class StripeWebhookView(APIView):
             return HttpResponse(status=400)
 
         tipo = event['type'] if isinstance(event, dict) else event.type
+        obj = event['data']['object']
+
         if tipo == 'checkout.session.completed':
-            obj = event['data']['object']
             meta = obj.get('metadata') or {}
             usuario_id = meta.get('usuario_id') or obj.get('client_reference_id')
             plan = meta.get('plan')
-            self._activar_plan(usuario_id, plan, obj.get('id'))
+            self._activar_plan(usuario_id, plan, obj.get('id'), obj.get('subscription'))
+        elif tipo in ('invoice.paid', 'invoice.payment_succeeded'):
+            # Renovación mensual: reiniciar los contadores de intentos.
+            self._renovar(obj.get('subscription'))
+        elif tipo == 'customer.subscription.deleted':
+            # La suscripción terminó o se canceló: bajar a gratis.
+            self._cancelar(obj.get('id'))
 
         return HttpResponse(status=200)
 
-    def _activar_plan(self, usuario_id, plan, session_id):
+    def _activar_plan(self, usuario_id, plan, session_id, subscription_id=None):
         if not usuario_id or plan not in PLANES_PAGABLES:
             return
         usuario = Usuario.objects(id_supabase=usuario_id).first()
@@ -172,6 +195,8 @@ class StripeWebhookView(APIView):
         usuario.plan = plan
         usuario.intentos_pesados = 0
         usuario.intentos_livianos = 0
+        if subscription_id:
+            usuario.stripe_subscription_id = subscription_id
         usuario.save()
 
         try:
@@ -201,3 +226,53 @@ class StripeWebhookView(APIView):
                 )
         except Exception:
             pass
+
+    def _renovar(self, subscription_id):
+        """Renovación mensual confirmada: reinicia los contadores de intentos."""
+        if not subscription_id:
+            return
+        usuario = Usuario.objects(stripe_subscription_id=subscription_id).first()
+        if not usuario:
+            return
+        usuario.intentos_pesados = 0
+        usuario.intentos_livianos = 0
+        usuario.save()
+
+    def _cancelar(self, subscription_id):
+        """La suscripción terminó o se canceló: baja el usuario a gratis."""
+        if not subscription_id:
+            return
+        usuario = Usuario.objects(stripe_subscription_id=subscription_id).first()
+        if not usuario:
+            return
+        usuario.plan = 'gratis'
+        usuario.stripe_subscription_id = None
+        usuario.save()
+        try:
+            from apps.analysis.services import NotificacionService
+            NotificacionService.crear(
+                u_id=usuario.id_supabase,
+                t='Suscripción finalizada',
+                m='Tu suscripción terminó. Volviste al plan gratis.',
+                tp='pago',
+            )
+        except Exception:
+            pass
+
+
+class CancelarSuscripcionView(APIView):
+    """Cancela la suscripción al final del período (el usuario mantiene el plan hasta entonces)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        usuario = UsuarioService.obtener_por_supabase_id(request.user.id)
+        if not usuario or not usuario.stripe_subscription_id:
+            return respuesta_error('SIN_SUSCRIPCION', 'No tenés una suscripción activa', status.HTTP_400_BAD_REQUEST)
+        try:
+            stripe.Subscription.modify(usuario.stripe_subscription_id, cancel_at_period_end=True)
+        except Exception as e:
+            return respuesta_error('STRIPE_ERROR', f'No se pudo cancelar: {e}', status.HTTP_502_BAD_GATEWAY)
+        return respuesta_exitosa(
+            {'cancelada': True},
+            mensaje='Suscripción cancelada. Mantenés el plan hasta el fin del período pagado.'
+        )

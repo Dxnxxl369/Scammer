@@ -27,6 +27,7 @@ from .views_pagos import (
     AdminConfigurarPlanView,
     CrearCheckoutView,
     StripeWebhookView,
+    CancelarSuscripcionView,
 )
 
 urlpatterns = [
@@ -52,6 +53,7 @@ urlpatterns = [
     # ─── Pagos / Stripe ───
     path('pagos/planes/', PlanesView.as_view(), name='pagos_planes'),
     path('pagos/checkout/', CrearCheckoutView.as_view(), name='pagos_checkout'),
+    path('pagos/cancelar/', CancelarSuscripcionView.as_view(), name='pagos_cancelar'),
     path('pagos/webhook/', StripeWebhookView.as_view(), name='pagos_webhook'),
     path('admin/planes/<str:plan>/', AdminConfigurarPlanView.as_view(), name='admin_configurar_plan'),
 ]

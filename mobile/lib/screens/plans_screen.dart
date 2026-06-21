@@ -129,6 +129,41 @@ class _PlansScreenState extends State<PlansScreen> {
     }
   }
 
+  Future<void> _cancelarSuscripcion() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Cancelar suscripción?'),
+        content: const Text('Mantenés tu plan hasta el fin del período ya pagado. Después volvés al plan gratis.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sí, cancelar')),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+
+    setState(() => _isUpdating = true);
+    try {
+      final response = await ApiService.post('/pagos/cancelar/', {});
+      final data = jsonDecode(response.body);
+      final msg = data['mensaje'] ?? data['error'] ?? 'No se pudo cancelar';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cancelar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
   void _showSuccessDialog(String planId) {
     showDialog(
       context: context,
@@ -222,6 +257,16 @@ class _PlansScreenState extends State<PlansScreen> {
 
                 return _buildPlanCard(plan, isCurrent, isDark, btnText);
               }),
+              if (userPlan != 'gratis') ...[
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton(
+                    onPressed: _isUpdating ? null : _cancelarSuscripcion,
+                    child: const Text('CANCELAR SUSCRIPCIÓN',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
