@@ -47,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'id': 'AUDIO', 'label': 'Audio', 'icon': LucideIcons.music},
     {'id': 'CODIGO', 'label': 'Código', 'icon': LucideIcons.code},
     {'id': 'SMS', 'label': 'SMS', 'icon': LucideIcons.messageSquare},
+    {'id': 'LLAMADA', 'label': 'Llamada', 'icon': LucideIcons.phoneCall},
   ];
 
   Future<void> _handlePickFile() async {
@@ -516,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Text('HASTA 50MB PERMITIDOS', style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800)),
               ] else ...[
                 Icon(
-                  _selectedModule == 'IMAGEN' ? LucideIcons.image : (_selectedModule == 'VIDEO' ? LucideIcons.video : LucideIcons.music), 
+                  _selectedModule == 'IMAGEN' ? LucideIcons.image : (_selectedModule == 'VIDEO' ? LucideIcons.video : (_selectedModule == 'LLAMADA' ? LucideIcons.phoneCall : LucideIcons.music)), 
                   size: 48, 
                   color: AppColors.accent
                 ),
@@ -560,10 +561,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 32),
           
-          if (['imagen', 'audio', 'video'].contains(res.type))
+          if (['imagen', 'audio', 'video', 'llamada'].contains(res.type))
             ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: EvidencePlayer(type: res.type, url: res.content, userPlan: auth.user?.plan ?? 'gratis'),
+              child: EvidencePlayer(type: res.type == 'llamada' ? 'audio' : res.type, url: res.content, userPlan: auth.user?.plan ?? 'gratis'),
             ),
           
           if (res.type == 'texto')

@@ -589,6 +589,56 @@ class AnalisisService:
             raise e
 
     @staticmethod
+    def analizar_llamada(id_identificador: str, archivo, ip: Optional[str] = None) -> Analisis:
+        """Detección de voz IA en una grabación de LLAMADA usando el modelo LOCAL
+        (apps.analysis.audio_detector). NO usa la Inference API de HF. Flujo separado
+        del análisis de audio normal, que queda intacto."""
+        permitido, error = AnalisisService.verificar_y_descontar_intentos(id_identificador, es_pesado=True)
+        if not permitido: raise Exception(error)
+        ext = archivo.name.split('.')[-1].lower() if '.' in archivo.name else 'mp3'
+        url_audio = StorageService.subir(archivo, ext)
+        usuario = Usuario.objects(id_supabase=id_identificador).first()
+        plan = usuario.plan if usuario else 'gratis'
+
+        # Validar peso para plan PRO
+        peso_archivo_mb = archivo.size / (1024 * 1024)
+
+        try:
+            import gc, librosa
+            from . import audio_detector
+            archivo.seek(0)
+            audio_data, sr = librosa.load(io.BytesIO(archivo.read()), sr=16000)
+
+            # Inferencia LOCAL (modelo en caché; sin API ni HF_API_TOKEN)
+            max_prob_total = audio_detector.analizar_segmentos(audio_data, sr)
+            gc.collect()
+            dom_p, lab, ver = audio_detector.veredicto(max_prob_total)
+            analisis = Analisis(id_supabase=id_identificador, tipo='llamada', contenido=url_audio, probabilidad_ia=round(max_prob_total, 2), veredicto=ver, detalles=f"Análisis Dominante: {dom_p:.1f}% {lab}", puntos_criticos=[{"titulo": "Firma Neuronal (Local)", "score": round(dom_p, 2), "label": lab, "descripcion": f"Confianza: {dom_p:.1f}% {lab}"}]).save()
+
+            # NOTIFICAR ADMINS
+            AnalisisService._notificar_admins(
+                titulo="Alerta: Escaneo de Llamada",
+                mensaje=f"Rastro: {max_prob_total:.1f}% IA detectado.",
+                tipo="analisis_pesado",
+                analisis_id=str(analisis.id)
+            )
+
+            # Lógica de Retención (igual que audio)
+            if plan == 'elite':
+                pass
+            elif plan == 'pro' and peso_archivo_mb <= 4:
+                pass
+            else:
+                StorageService.borrar(url_audio)
+                analisis.contenido = "[ELIMINADO POR PROTOCOLO DE NIVEL]"
+                analisis.save()
+
+            return analisis
+        except Exception as e:
+            if plan != 'elite': StorageService.borrar(url_audio)
+            raise e
+
+    @staticmethod
     def _notificar_admins(titulo: str, mensaje: str, tipo: str, analisis_id: Optional[str] = None):
         """Helper para enviar notificaciones a todos los administradores"""
         admins = Usuario.objects(rol='administrador')

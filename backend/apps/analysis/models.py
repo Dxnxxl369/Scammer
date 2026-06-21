@@ -3,7 +3,7 @@ from mongoengine import Document, StringField, FloatField, DateTimeField, ListFi
 
 class Analisis(Document):
     id_supabase = StringField(required=True)
-    tipo = StringField(choices=['texto', 'imagen', 'audio', 'url', 'video', 'documento', 'codigo', 'sms'], required=True)
+    tipo = StringField(choices=['texto', 'imagen', 'audio', 'url', 'video', 'documento', 'codigo', 'sms', 'llamada'], required=True)
     contenido = StringField()  # Texto analizado o URL
     id_archivo = StringField()  # ID en almacenamiento
     

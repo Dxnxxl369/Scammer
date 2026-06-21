@@ -170,6 +170,32 @@ class AnalizarAudioView(AnalisisBaseView):
             print(traceback.format_exc())
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class AnalizarLlamadaView(AnalisisBaseView):
+    """Análisis de grabación de LLAMADA con el modelo LOCAL de deepfake de voz."""
+    def post(self, request):
+        identificador = self.obtener_identificador(request)
+        if not identificador: return respuesta_error('IDENTIFICADOR_REQUERIDO', 'Sin sesión', status.HTTP_401_UNAUTHORIZED)
+        if 'archivo' not in request.FILES: return respuesta_error('DATOS_FALTANTES', 'Sin audio', status.HTTP_400_BAD_REQUEST)
+        try:
+            nombre_archivo = request.data.get('nombre_archivo')
+            extension = request.data.get('extension')
+
+            analisis = AnalisisService.analizar_llamada(
+                identificador,
+                request.FILES['archivo'],
+                self.obtener_ip(request)
+            )
+
+            if nombre_archivo: analisis.update(set__nombre_archivo=nombre_archivo)
+            if extension: analisis.update(set__extension=extension)
+
+            return respuesta_exitosa(analisis.to_dict())
+        except Exception as e:
+            import traceback
+            print(f"[DEBUG ERROR 500 LLAMADA]: {str(e)}")
+            print(traceback.format_exc())
+            return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class AnalizarURLView(AnalisisBaseView):
     def post(self, request):
         identificador = self.obtener_identificador(request)
