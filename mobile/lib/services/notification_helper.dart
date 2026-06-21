@@ -55,4 +55,30 @@ class NotificationHelper {
       _log('$st');
     }
   }
+
+  /// Aviso de que el teléfono dejó una grabación de llamada nueva.
+  static Future<void> showCallRecordingAlert(String name) async {
+    await _ensureInit();
+    try {
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'call_recordings',
+          'Llamadas grabadas',
+          channelDescription: 'Avisa cuando hay una nueva grabación de llamada para analizar',
+          importance: Importance.high,
+          priority: Priority.high,
+          styleInformation: BigTextStyleInformation(''),
+        ),
+      );
+      await _plugin.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        '📞 Nueva llamada grabada',
+        'Abre la app y toca "Analizar última llamada grabada" · $name',
+        details,
+      );
+    } catch (e, st) {
+      _log('❌ EXCEPCIÓN mostrando notificación de llamada: $e');
+      _log('$st');
+    }
+  }
 }

@@ -10,6 +10,8 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/evidence_player.dart';
 import '../services/analysis_service.dart';
 import '../services/call_recorder_service.dart';
+import '../services/call_recordings_service.dart';
+import '../services/notification_helper.dart';
 import '../models/analysis.dart';
 import '../widgets/master_header.dart';
 
@@ -29,6 +31,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isRecording = false;
   int _recordSeconds = 0;
   Timer? _recordTimer;
+  // Detección de grabaciones de llamada del teléfono (opción A)
+  bool _autoDetectCalls = false;
+  bool _loadingRecording = false;
+  int _lastSeenRecordingMs = 0;
+  Timer? _callPollTimer;
   final _textController = TextEditingController();
   final _codeController = TextEditingController();
   final _smsController = TextEditingController();
@@ -43,6 +50,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _smsController.dispose();
     _senderController.dispose();
     _recordTimer?.cancel();
+    _callPollTimer?.cancel();
     CallRecorderService.liberar();
     super.dispose();
   }
@@ -130,6 +138,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final m = (s ~/ 60).toString().padLeft(2, '0');
     final ss = (s % 60).toString().padLeft(2, '0');
     return '$m:$ss';
+  }
+
+  // ===== Opción A: detectar y analizar grabaciones de llamada del teléfono =====
+  Future<void> _analizarUltimaGrabada() async {
+    setState(() => _loadingRecording = true);
+    try {
+      final permiso = await CallRecordingsService.pedirPermiso();
+      if (!permiso) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PERMISO DE AUDIO DENEGADO')),
+          );
+        }
+        return;
+      }
+      final rec = await CallRecordingsService.ultima();
+      if (rec == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('NO SE ENCONTRARON GRABACIONES DE LLAMADA')),
+          );
+        }
+        return;
+      }
+      _lastSeenRecordingMs = rec.dateAddedMs;
+      final file = await CallRecordingsService.cachear(rec.id);
+      if (file == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('NO SE PUDO LEER LA GRABACIÓN')),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectedFile = file;
+        _lastResult = null;
+      });
+      await _handleStartScan(); // analiza el archivo como 'llamada' (modelo local)
+    } finally {
+      if (mounted) setState(() => _loadingRecording = false);
+    }
+  }
+
+  Future<void> _toggleAutoDetect(bool on) async {
+    if (on) {
+      final permiso = await CallRecordingsService.pedirPermiso();
+      if (!permiso) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PERMISO DE AUDIO DENEGADO')),
+          );
+        }
+        return;
+      }
+      // Punto de partida: la última grabación actual (solo avisamos de NUEVAS)
+      final actual = await CallRecordingsService.ultima();
+      _lastSeenRecordingMs = actual?.dateAddedMs ?? 0;
+      _callPollTimer?.cancel();
+      _callPollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pollRecordings());
+      if (mounted) setState(() => _autoDetectCalls = true);
+    } else {
+      _callPollTimer?.cancel();
+      _callPollTimer = null;
+      if (mounted) setState(() => _autoDetectCalls = false);
+    }
+  }
+
+  Future<void> _pollRecordings() async {
+    final rec = await CallRecordingsService.ultima();
+    if (rec == null) return;
+    if (rec.dateAddedMs > _lastSeenRecordingMs) {
+      _lastSeenRecordingMs = rec.dateAddedMs;
+      await NotificationHelper.showCallRecordingAlert(rec.name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('NUEVA LLAMADA GRABADA: ${rec.name.toUpperCase()}')),
+        );
+      }
+    }
   }
 
   Future<void> _handleStartScan() async {
@@ -392,6 +481,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Expanded(
       child: Container(
         width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
           color: AppColors.getCard(isDark),
           borderRadius: BorderRadius.circular(32),
@@ -401,72 +491,144 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: _isRecording ? BorderStyle.solid : BorderStyle.none,
           ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (!_isRecording) ...[
-              GestureDetector(
-                onTap: _startRecording,
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.accent, width: 2),
-                  ),
-                  child: const Icon(LucideIcons.mic, size: 40, color: AppColors.accent),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text('GRABAR LLAMADA',
-                  style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 13)),
-              const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'Pon la llamada en ALTAVOZ y toca para grabar. Al detener se analiza con el modelo local.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, height: 1.4),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextButton.icon(
-                onPressed: _handlePickFile,
-                icon: const Icon(LucideIcons.uploadCloud, size: 14, color: AppColors.textMuted),
-                label: const Text('O SUBIR UNA GRABACIÓN',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
-              ),
-            ] else ...[
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.accent, width: 3),
-                ),
-                child: IconButton(
-                  onPressed: _stopRecording,
-                  icon: const Icon(LucideIcons.square, size: 34, color: AppColors.accent),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(_fmtDuracion(_recordSeconds),
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 30, letterSpacing: 2, color: AppColors.accent)),
-              const SizedBox(height: 6),
-              const Text('GRABANDO… TOCA EL CUADRADO PARA DETENER',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
-              const SizedBox(height: 14),
-              TextButton(
-                onPressed: _cancelRecording,
-                child: const Text('CANCELAR',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              ),
-            ],
-          ],
+        child: _isRecording ? _buildGrabando() : _buildLlamadaIdle(isDark),
+      ),
+    );
+  }
+
+  Widget _buildGrabando() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 96,
+          height: 96,
+          decoration: BoxDecoration(
+            color: AppColors.accent.withOpacity(0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.accent, width: 3),
+          ),
+          child: IconButton(
+            onPressed: _stopRecording,
+            icon: const Icon(LucideIcons.square, size: 34, color: AppColors.accent),
+          ),
         ),
+        const SizedBox(height: 20),
+        Text(_fmtDuracion(_recordSeconds),
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 30, letterSpacing: 2, color: AppColors.accent)),
+        const SizedBox(height: 6),
+        const Text('GRABANDO… TOCA EL CUADRADO PARA DETENER',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        const SizedBox(height: 14),
+        TextButton(
+          onPressed: _cancelRecording,
+          child: const Text('CANCELAR',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLlamadaIdle(bool isDark) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(LucideIcons.phoneCall, size: 38, color: AppColors.accent),
+          const SizedBox(height: 10),
+          const Text('LLAMADAS GRABADAS DEL TELÉFONO',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12)),
+          const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'Tu teléfono graba las llamadas. Detectamos la última y la analizamos.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: _loadingRecording ? null : _analizarUltimaGrabada,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Center(
+                child: _loadingRecording
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('ANALIZAR ÚLTIMA LLAMADA GRABADA',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.only(left: 14, right: 4),
+            decoration: BoxDecoration(
+              color: AppColors.getBg(isDark),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.getBorder(isDark)),
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Avisarme de llamadas grabadas nuevas',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                ),
+                Switch(
+                  value: _autoDetectCalls,
+                  activeColor: AppColors.accent,
+                  onChanged: _toggleAutoDetect,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: Divider(color: AppColors.getBorder(isDark))),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('O GRABAR EN VIVO',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              ),
+              Expanded(child: Divider(color: AppColors.getBorder(isDark))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: _startRecording,
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.12),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.accent, width: 2),
+              ),
+              child: const Icon(LucideIcons.mic, size: 28, color: AppColors.accent),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text('GRABAR CON MICRÓFONO (ALTAVOZ)',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 10)),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: _handlePickFile,
+            icon: const Icon(LucideIcons.uploadCloud, size: 14, color: AppColors.textMuted),
+            label: const Text('O SUBIR UNA GRABACIÓN',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          ),
+        ],
       ),
     );
   }
