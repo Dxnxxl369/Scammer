@@ -37,7 +37,9 @@ class HealthCheckView(APIView):
     def _check_supabase(self):
         try:
             url = f"{settings.SUPABASE_URL}/auth/v1/settings"
-            response = requests.get(url, timeout=5)
+            # El endpoint /auth/v1/settings exige la cabecera apikey; sin ella Supabase responde 401.
+            headers = {"apikey": settings.SUPABASE_SECRET_KEY}
+            response = requests.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 return 'ok'
             return f'error: status {response.status_code}'

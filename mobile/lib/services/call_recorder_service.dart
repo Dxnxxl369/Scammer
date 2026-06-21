@@ -33,15 +33,33 @@ class CallRecorderService {
     final fecha = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
     _rutaActual = '${dir.path}/LLAMADA_$fecha.wav';
 
-    await _record.start(
-      const RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-        numChannels: 1,
-      ),
-      path: _rutaActual!,
-    );
-    return true;
+    // VOICE_CALL esta bloqueado a nivel de sistema en este TECNO -> usamos la
+    // fuente VoIP del microfono con ALTAVOZ activado, para captar la voz del
+    // otro que sale por la bocina. Fallback a MIC normal.
+    for (final src in const [
+      AndroidAudioSource.voiceCommunication,
+      AndroidAudioSource.mic,
+    ]) {
+      try {
+        await _record.start(
+          RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+            androidConfig: AndroidRecordConfig(
+              audioSource: src,
+              speakerphone: true,
+              audioManagerMode: AudioManagerMode.modeInCommunication,
+            ),
+          ),
+          path: _rutaActual!,
+        );
+        return true;
+      } catch (_) {
+        // probar la siguiente fuente
+      }
+    }
+    return false;
   }
 
   static Future<bool> estaGrabando() => _record.isRecording();

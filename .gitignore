@@ -38,3 +38,5 @@ firebase-key.json
 !mobile/
 !README.md
 !.gitignore
+
+test_audio_local.py

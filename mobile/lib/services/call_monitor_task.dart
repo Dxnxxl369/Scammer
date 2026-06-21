@@ -83,24 +83,54 @@ class CallMonitorHandler extends TaskHandler {
 
   Future<void> _iniciar() async {
     try {
+      // OJO: en el isolate del servicio, hasPermission() puede devolver false
+      // AUNQUE el permiso SI este concedido (no tiene Activity para verificar).
+      // Por eso NO bloqueamos: el servicio es de tipo "microphone", asi que
+      // intentamos grabar directo; si de verdad falta, _rec.start() lanzara.
       final perm = await _rec.hasPermission();
-      _log('_iniciar: hasPermission=$perm');
-      if (!perm) {
-        _log('⚠️ sin permiso de micro -> no se puede grabar');
-        return;
-      }
+      _log('_iniciar: hasPermission=$perm (intento grabar igual, no bloqueo)');
       final dir = await _carpetaLlamadas();
       final ts = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
       _rutaActual = '${dir.path}/LLAMADA_$ts.wav';
       _log('_iniciar: grabando a $_rutaActual');
-      await _rec.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: _rutaActual!,
-      );
+
+      // VOICE_CALL esta BLOQUEADO a nivel de sistema en este TECNO (AudioFlinger
+      // status -1 -> archivo de 0 bytes). La unica via real es grabar por el
+      // MICROFONO con el ALTAVOZ activado (speakerphone): asi el mic capta la voz
+      // del otro que sale por la bocina. Usamos la fuente VoIP (no bloqueada).
+      const fuentes = [
+        AndroidAudioSource.voiceCommunication,
+        AndroidAudioSource.mic,
+      ];
+      bool iniciado = false;
+      for (final src in fuentes) {
+        try {
+          await _rec.start(
+            RecordConfig(
+              encoder: AudioEncoder.wav,
+              sampleRate: 16000,
+              numChannels: 1,
+              androidConfig: AndroidRecordConfig(
+                audioSource: src,
+                speakerphone: true,
+                audioManagerMode: AudioManagerMode.modeInCommunication,
+              ),
+            ),
+            path: _rutaActual!,
+          );
+          iniciado = true;
+          _log('grabando con fuente=${src.name} (altavoz ON)');
+          break;
+        } catch (e) {
+          _log('fuente ${src.name} fallo ($e) -> pruebo la siguiente');
+        }
+      }
+      if (!iniciado) {
+        _grabando = false;
+        _log('❌ ninguna fuente de audio arranco -> sin grabacion');
+        return;
+      }
+
       _grabando = true;
       _log('✅ grabacion INICIADA');
       FlutterForegroundTask.updateService(
@@ -127,6 +157,9 @@ class CallMonitorHandler extends TaskHandler {
           final bytes = await f.length();
           final seg = ((bytes - 44) / 32000).round();
           _log('✅ GUARDADO: ${destino.split('/').last} ($bytes bytes, ~${seg}s)');
+          if (bytes <= 1024) {
+            _log('⚠️ archivo casi vacio -> probable SILENCIO (el OEM bloqueo la captura)');
+          }
           final m = (seg ~/ 60).toString().padLeft(2, '0');
           final s = (seg % 60).toString().padLeft(2, '0');
           FlutterForegroundTask.updateService(
