@@ -41,7 +41,7 @@ class ScammerApp extends StatelessWidget {
       title: 'Scammer IA Mobile',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme(auth.isDarkMode),
-      home: auth.isLoading 
+      home: (auth.isLoading && auth.user == null)
         ? const Scaffold(body: Center(child: CircularProgressIndicator()))
         : (auth.user == null ? const LoginScreen() : const DashboardScreen()),
       routes: {
