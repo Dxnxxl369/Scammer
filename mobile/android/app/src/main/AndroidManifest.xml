@@ -55,6 +55,19 @@
                 <data android:scheme="com.scammer.ia" android:host="login-callback" />
             </intent-filter>
         </activity>
+
+        <!-- another_telephony: receiver del broadcast de SMS entrante.
+             SIN esto, los SMS NO llegan al plugin (ni foreground ni background).
+             El plugin NO lo declara solo; hay que ponerlo aquí a mano. -->
+        <receiver
+            android:name="com.shounakmulay.telephony.sms.IncomingSmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
