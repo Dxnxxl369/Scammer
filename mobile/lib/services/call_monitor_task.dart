@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 /// DEBE ser una funcion top-level con @pragma('vm:entry-point').
 @pragma('vm:entry-point')
 void startCallMonitor() {
-  print('[CALL-MON] startCallMonitor() -> setTaskHandler');
   FlutterForegroundTask.setTaskHandler(CallMonitorHandler());
 }
 
@@ -23,6 +22,14 @@ class CallMonitorHandler extends TaskHandler {
   int _tick = 0;
   CallState? _ultimoEstado;
 
+  /// Loguea a logcat Y le manda la linea a la app (panel en pantalla).
+  void _log(String msg) {
+    print('[CALL-MON] $msg');
+    try {
+      FlutterForegroundTask.sendDataToMain('LOG:$msg');
+    } catch (_) {}
+  }
+
   Future<Directory> _carpetaLlamadas() async {
     final base = await getApplicationDocumentsDirectory();
     final dir = Directory('${base.path}/llamadas');
@@ -35,13 +42,12 @@ class CallMonitorHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     _grabando = false;
-    print('[CALL-MON] ✅ onStart (starter=${starter.name}) -> servicio vivo, empezando a vigilar llamadas');
-    // Probar permiso de micro de entrada para dejarlo logueado.
+    _log('✅ onStart (starter=${starter.name}) -> servicio vivo, vigilando llamadas');
     try {
       final permMic = await _rec.hasPermission();
-      print('[CALL-MON]    permiso microfono (record.hasPermission)=$permMic');
+      _log('permiso microfono (record.hasPermission)=$permMic');
     } catch (e) {
-      print('[CALL-MON]    ⚠️ error consultando permiso de micro: $e');
+      _log('⚠️ error consultando permiso de micro: $e');
     }
     FlutterForegroundTask.updateService(
       notificationTitle: 'Monitoreando llamadas',
@@ -55,25 +61,22 @@ class CallMonitorHandler extends TaskHandler {
     CallState estado;
     try {
       estado = await Telephony.instance.callState;
-    } catch (e, st) {
-      print('[CALL-MON] ❌ tick=$_tick ERROR leyendo callState: $e');
-      print('[CALL-MON]    $st');
+    } catch (e) {
+      _log('❌ tick=$_tick ERROR leyendo callState: $e');
       return;
     }
 
-    // Log cada poll para ver si callState cambia cuando entra la llamada.
-    final cambio = estado != _ultimoEstado ? '  <<< CAMBIO' : '';
-    print('[CALL-MON] tick=$_tick estado=$estado grabando=$_grabando$cambio');
+    // Solo logueo cuando cambia el estado (para no inundar), salvo los primeros ticks.
+    if (estado != _ultimoEstado || _tick <= 2) {
+      _log('tick=$_tick estado=$estado grabando=$_grabando');
+    }
     _ultimoEstado = estado;
 
-    // Llamada activa y todavia no estamos grabando -> arrancar.
     if (estado == CallState.OFFHOOK && !_grabando) {
-      print('[CALL-MON] 📞 -> llamada ACTIVA detectada, iniciando grabacion...');
+      _log('📞 -> llamada ACTIVA detectada, iniciando grabacion...');
       await _iniciar();
-    }
-    // Llamada terminada y estabamos grabando -> detener y guardar.
-    else if (estado == CallState.IDLE && _grabando) {
-      print('[CALL-MON] 🛑 -> llamada TERMINADA, deteniendo grabacion...');
+    } else if (estado == CallState.IDLE && _grabando) {
+      _log('🛑 -> llamada TERMINADA, deteniendo grabacion...');
       await _detener();
     }
   }
@@ -81,15 +84,15 @@ class CallMonitorHandler extends TaskHandler {
   Future<void> _iniciar() async {
     try {
       final perm = await _rec.hasPermission();
-      print('[CALL-MON]    _iniciar: hasPermission=$perm');
+      _log('_iniciar: hasPermission=$perm');
       if (!perm) {
-        print('[CALL-MON]    ⚠️ sin permiso de micro -> no se puede grabar');
+        _log('⚠️ sin permiso de micro -> no se puede grabar');
         return;
       }
       final dir = await _carpetaLlamadas();
       final ts = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
       _rutaActual = '${dir.path}/LLAMADA_$ts.wav';
-      print('[CALL-MON]    _iniciar: grabando a $_rutaActual');
+      _log('_iniciar: grabando a $_rutaActual');
       await _rec.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -99,15 +102,14 @@ class CallMonitorHandler extends TaskHandler {
         path: _rutaActual!,
       );
       _grabando = true;
-      print('[CALL-MON]    ✅ grabacion INICIADA');
+      _log('✅ grabacion INICIADA');
       FlutterForegroundTask.updateService(
         notificationTitle: 'Grabando llamada...',
         notificationText: 'Scammer esta grabando la llamada actual',
       );
-    } catch (e, st) {
+    } catch (e) {
       _grabando = false;
-      print('[CALL-MON]    ❌ ERROR al iniciar grabacion: $e');
-      print('[CALL-MON]       $st');
+      _log('❌ ERROR al iniciar grabacion: $e');
     }
   }
 
@@ -116,52 +118,49 @@ class CallMonitorHandler extends TaskHandler {
       final ruta = await _rec.stop();
       _grabando = false;
       final destino = ruta ?? _rutaActual;
-      print('[CALL-MON]    _detener: record.stop devolvio=$ruta  destino=$destino');
+      _log('_detener: record.stop devolvio=$ruta');
       if (destino != null) {
         final f = File(destino);
         final existe = await f.exists();
-        print('[CALL-MON]    _detener: archivo existe=$existe');
+        _log('_detener: archivo existe=$existe');
         if (existe) {
           final bytes = await f.length();
           final seg = ((bytes - 44) / 32000).round();
-          print('[CALL-MON]    ✅ GUARDADO: $destino ($bytes bytes, ~${seg}s)');
+          _log('✅ GUARDADO: ${destino.split('/').last} ($bytes bytes, ~${seg}s)');
           final m = (seg ~/ 60).toString().padLeft(2, '0');
           final s = (seg % 60).toString().padLeft(2, '0');
           FlutterForegroundTask.updateService(
             notificationTitle: 'Llamada grabada ($m:$s)',
             notificationText: 'Abri Scammer para analizarla',
           );
-          FlutterForegroundTask.sendDataToMain(destino);
+          FlutterForegroundTask.sendDataToMain('REC:$destino');
           return;
         }
       }
-      print('[CALL-MON]    ⚠️ no quedo archivo de grabacion');
+      _log('⚠️ no quedo archivo de grabacion');
       FlutterForegroundTask.updateService(
         notificationTitle: 'Monitoreando llamadas',
         notificationText: 'Esperando una llamada para grabarla...',
       );
-    } catch (e, st) {
+    } catch (e) {
       _grabando = false;
-      print('[CALL-MON]    ❌ ERROR al detener grabacion: $e');
-      print('[CALL-MON]       $st');
+      _log('❌ ERROR al detener grabacion: $e');
     }
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    print('[CALL-MON] onDestroy (isTimeout=$isTimeout) grabando=$_grabando');
+    _log('onDestroy (isTimeout=$isTimeout) grabando=$_grabando');
     if (_grabando) {
       try {
         await _rec.stop();
       } catch (e) {
-        print('[CALL-MON]    error stop en destroy: $e');
+        _log('error stop en destroy: $e');
       }
       _grabando = false;
     }
     try {
       await _rec.dispose();
-    } catch (e) {
-      print('[CALL-MON]    error dispose: $e');
-    }
+    } catch (_) {}
   }
 }

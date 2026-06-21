@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -41,6 +42,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Grabación automática de llamadas (foreground service)
   bool _autoRecordCalls = false;
   bool _togglingAutoRecord = false;
+  final List<String> _debugLog = [];
+  bool _showDebugLog = false;
   final _textController = TextEditingController();
   final _codeController = TextEditingController();
   final _smsController = TextEditingController();
@@ -60,21 +63,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) setState(() => _autoRecordCalls = activo);
   }
 
-  // El servicio en primer plano avisa que grabó una llamada (manda la ruta).
+  void _addLog(String linea) {
+    if (!mounted) return;
+    final hora = DateFormat('HH:mm:ss').format(DateTime.now());
+    setState(() {
+      _debugLog.add('$hora  $linea');
+      if (_debugLog.length > 120) _debugLog.removeAt(0);
+      _showDebugLog = true;
+    });
+  }
+
+  // El servicio en primer plano manda logs ('LOG:') y rutas de grabación ('REC:').
   void _onTaskData(Object data) {
     if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('📞 Llamada grabada — toca ANALIZAR ÚLTIMA GRABACIÓN'),
-      duration: Duration(seconds: 4),
-    ));
+    final s = data.toString();
+    if (s.startsWith('LOG:')) {
+      _addLog(s.substring(4));
+    } else if (s.startsWith('REC:')) {
+      _addLog('📁 grabación lista: ${s.substring(4).split('/').last}');
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('📞 Llamada grabada — toca ANALIZAR ÚLTIMA GRABACIÓN'),
+        duration: Duration(seconds: 4),
+      ));
+    } else {
+      _addLog(s);
+    }
   }
 
   Future<void> _onToggleAutoRecord(bool value) async {
     setState(() => _togglingAutoRecord = true);
+    _addLog(value ? '🔘 activando grabación automática...' : '🔘 desactivando...');
     try {
       if (value) {
         final ok = await CallMonitorControl.activar();
+        _addLog('activar() -> ${ok ? "OK ✅ (servicio arrancado)" : "FALLÓ ❌ (revisar permisos)"}');
         if (!ok) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -89,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       } else {
         await CallMonitorControl.desactivar();
+        _addLog('servicio detenido');
       }
       if (mounted) {
         setState(() {
@@ -96,7 +120,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _togglingAutoRecord = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      _addLog('❌ error en toggle: $e');
       if (mounted) setState(() => _togglingAutoRecord = false);
     }
   }
@@ -596,6 +621,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildDebugPanel(bool isDark) {
+    if (!_showDebugLog || _debugLog.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12, left: 8, right: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(isDark ? 0.4 : 0.85),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.getBorder(isDark)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.code, size: 13, color: AppColors.accent),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('LOGS DEL SERVICIO (en vivo)',
+                    style: TextStyle(color: AppColors.accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: _debugLog.join('\n')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Logs copiados'), duration: Duration(seconds: 2)),
+                  );
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Text('COPIAR', style: TextStyle(color: AppColors.accent, fontSize: 9, fontWeight: FontWeight.w900)),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _debugLog.clear()),
+                child: const Text('LIMPIAR', style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 180),
+            width: double.infinity,
+            child: SingleChildScrollView(
+              reverse: true,
+              child: SelectableText(
+                _debugLog.join('\n'),
+                style: const TextStyle(color: Color(0xFF9BE89B), fontSize: 9.5, height: 1.45, fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutoRecordToggle(bool isDark) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -644,6 +725,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildAutoRecordToggle(isDark),
+          _buildDebugPanel(isDark),
           const SizedBox(height: 22),
           GestureDetector(
             onTap: _startRecording,
