@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -172,9 +173,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
         return;
       }
+      // Renombrar con fecha-hora en números (de MediaStore) para saber cuándo se grabó
+      File archivoFinal = file;
+      try {
+        final ms = rec.dateAddedMs > 0 ? rec.dateAddedMs : DateTime.now().millisecondsSinceEpoch;
+        final fecha = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.fromMillisecondsSinceEpoch(ms));
+        final ext = file.path.contains('.') ? file.path.split('.').last : 'aac';
+        archivoFinal = await file.rename('${file.parent.path}/LLAMADA_$fecha.$ext');
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _selectedFile = file;
+        _selectedFile = archivoFinal;
         _lastResult = null;
       });
       await _handleStartScan(); // analiza el archivo como 'llamada' (modelo local)
