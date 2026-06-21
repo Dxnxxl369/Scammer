@@ -59,6 +59,19 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
     setState(() => _active = true);
   }
 
+  Future<void> _testUltimo() async {
+    print('[SMS-MON] (PANTALLA) usuario tocó ANALIZAR ÚLTIMO SMS');
+    setState(() => _busy = true);
+    final m = await SmsMonitorService.analizarUltimoDeBandeja();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (m == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('NO SE PUDO LEER LA BANDEJA (revisá el permiso de SMS).')),
+      );
+    }
+  }
+
   Color _riskColor(AnalysisResult? res) {
     if (res == null) return AppColors.textMuted;
     final p = res.aiProbability;
@@ -144,6 +157,23 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
                   ],
                 ),
               ),
+              if (_active) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _testUltimo,
+                    icon: const Icon(LucideIcons.messageSquare, size: 16, color: AppColors.accent),
+                    label: const Text('ANALIZAR ÚLTIMO SMS RECIBIDO',
+                        style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.accent),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               const Text('ENTRANTES ANALIZADOS',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.textMuted, letterSpacing: 1)),

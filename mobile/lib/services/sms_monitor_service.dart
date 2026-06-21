@@ -1,36 +1,27 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:another_telephony/telephony.dart';
 import '../models/analysis.dart';
 import 'analysis_service.dart';
 import 'notification_helper.dart';
 
-// Logger explícito para depurar el monitoreo de SMS. Prefijo [SMS-MON] para
-// poder filtrar en la consola de `flutter run` o con: adb logcat | findstr SMS-MON
+// Prefijo [SMS-MON] para filtrar: flutter run, o  adb logcat | findstr SMS-MON
 void _log(String m) => print('[SMS-MON] $m');
 
-/// Handler de fondo: se ejecuta en un ISOLATE separado cuando llega un SMS y la
-/// app está cerrada o en segundo plano. Top-level + @pragma('vm:entry-point').
+/// Handler de fondo (app cerrada): isolate separado, top-level + vm:entry-point.
 @pragma('vm:entry-point')
 Future<void> smsBackgroundHandler(SmsMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
-  _log('📩📩 BACKGROUND handler DISPARADO (app cerrada/2do plano)');
-  _log('     remitente=${message.address}  bodyLen=${message.body?.length}');
-  _log('     body="${message.body}"');
+  _log('📩📩 BACKGROUND handler DISPARADO (broadcast, app cerrada/2do plano)');
+  _log('     remitente=${message.address}  body="${message.body}"');
   final body = message.body ?? '';
-  if (body.trim().isEmpty) {
-    _log('     body vacío -> ignoro');
-    return;
-  }
+  if (body.trim().isEmpty) return;
   try {
-    _log('     -> llamando analyzeSms(auto:true)...');
     final out = await AnalysisService.analyzeSms(body, message.address, auto: true);
     final res = out.result;
-    _log('     <- err=${out.error}  prob=${res?.aiProbability}  veredicto=${res?.veredicto}  estado=${res?.estado}');
+    _log('     <- err=${out.error} prob=${res?.aiProbability} veredicto=${res?.veredicto}');
     if (res != null && res.estado == 'OK' && res.aiProbability >= 60) {
-      _log('     ⚠️ riesgo>=60 -> mostrando notificación');
       await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
-    } else {
-      _log('     riesgo<60 o sin resultado -> NO notifico');
     }
   } catch (e, st) {
     _log('     ❌ EXCEPCIÓN en background handler: $e');
@@ -38,17 +29,19 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
   }
 }
 
-/// Monitoreo automático de SMS entrante. Solo Android (iOS no permite leer SMS).
+/// Monitoreo automático de SMS entrante. Solo Android.
+/// Usa 2 mecanismos: broadcast (para app cerrada) + polling de la bandeja
+/// (respaldo robusto para ROMs OEM como HiOS que bloquean el broadcast).
 class SmsMonitorService {
   static final Telephony _telephony = Telephony.instance;
   static bool _started = false;
+  static Timer? _pollTimer;
+  static int _lastSeenDate = 0;
 
-  /// Callback para que la pantalla muestre en vivo lo analizado (foreground).
   static void Function(SmsMessage message, AnalysisResult? result)? onAnalyzed;
 
   static bool get isStarted => _started;
 
-  /// Pide permisos de teléfono y SMS. Devuelve true si se concedieron.
   static Future<bool> requestPermissions() async {
     _log('Solicitando permisos de teléfono y SMS...');
     try {
@@ -62,42 +55,109 @@ class SmsMonitorService {
     }
   }
 
-  /// Empieza a escuchar SMS entrantes (foreground + background). Idempotente.
   static void start() {
     if (_started) {
       _log('start() llamado pero YA estaba iniciado (ok)');
       return;
     }
-    _log('start() -> registrando listenIncomingSms (foreground + background)...');
+    _started = true;
+    // 1) Broadcast: sirve para app cerrada/2do plano (en algunos OEM no dispara).
+    _log('start() -> registrando listenIncomingSms (broadcast)...');
     try {
       _telephony.listenIncomingSms(
         onNewMessage: _onForeground,
         onBackgroundMessage: smsBackgroundHandler,
         listenInBackground: true,
       );
-      _started = true;
-      _log('✅ listenIncomingSms registrado SIN errores. Esperando SMS entrantes...');
+      _log('✅ listenIncomingSms registrado SIN errores.');
     } catch (e, st) {
       _log('❌ EXCEPCIÓN al registrar listenIncomingSms: $e');
       _log('$st');
     }
+    // 2) Polling de la bandeja: respaldo cuando el broadcast no dispara (HiOS/MIUI).
+    //    Funciona con la app en primer plano.
+    _iniciarPolling();
   }
 
-  /// Llega un SMS con la app abierta: analiza, notifica si es riesgoso y avisa a la UI.
+  static Future<void> _iniciarPolling() async {
+    _log('Iniciando POLLING de bandeja (cada 5s) como respaldo del broadcast...');
+    try {
+      final actuales = await _telephony.getInboxSms();
+      actuales.sort((a, b) => (b.date ?? 0).compareTo(a.date ?? 0));
+      _lastSeenDate = actuales.isNotEmpty
+          ? (actuales.first.date ?? DateTime.now().millisecondsSinceEpoch)
+          : DateTime.now().millisecondsSinceEpoch;
+      _log('Bandeja inicial: ${actuales.length} SMS. lastSeenDate=$_lastSeenDate (solo avisaré de los NUEVOS a partir de ahora)');
+    } catch (e, st) {
+      _lastSeenDate = DateTime.now().millisecondsSinceEpoch;
+      _log('❌ Error leyendo bandeja inicial (¿permiso READ_SMS?): $e');
+      _log('$st');
+    }
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
+    _log('✅ Polling activo.');
+  }
+
+  static Future<void> _poll() async {
+    try {
+      final msgs = await _telephony.getInboxSms();
+      final nuevos = msgs.where((m) => (m.date ?? 0) > _lastSeenDate).toList();
+      if (nuevos.isEmpty) return;
+      _log('🔄 POLL: detecté ${nuevos.length} SMS NUEVO(s) en la bandeja');
+      for (final m in nuevos) {
+        final d = m.date ?? 0;
+        if (d > _lastSeenDate) _lastSeenDate = d;
+      }
+      nuevos.sort((a, b) => (a.date ?? 0).compareTo(b.date ?? 0)); // viejo -> nuevo
+      for (final m in nuevos) {
+        await _procesar(m, 'POLL');
+      }
+    } catch (e, st) {
+      _log('❌ Error en poll: $e');
+      _log('$st');
+    }
+  }
+
+  /// Botón de prueba: analiza el ÚLTIMO SMS de la bandeja sin esperar uno nuevo.
+  static Future<SmsMessage?> analizarUltimoDeBandeja() async {
+    _log('(TEST) Leyendo el último SMS de la bandeja...');
+    try {
+      final msgs = await _telephony.getInboxSms();
+      if (msgs.isEmpty) {
+        _log('(TEST) Bandeja vacía.');
+        return null;
+      }
+      msgs.sort((a, b) => (b.date ?? 0).compareTo(a.date ?? 0));
+      final ultimo = msgs.first;
+      _log('(TEST) Último SMS: remitente=${ultimo.address} body="${ultimo.body}"');
+      await _procesar(ultimo, 'TEST');
+      return ultimo;
+    } catch (e, st) {
+      _log('(TEST) ❌ Error leyendo bandeja: $e');
+      _log('$st');
+      return null;
+    }
+  }
+
   static Future<void> _onForeground(SmsMessage message) async {
-    _log('📩 onNewMessage (FOREGROUND) DISPARADO');
-    _log('   remitente=${message.address}  bodyLen=${message.body?.length}');
-    _log('   body="${message.body}"');
+    _log('📩 onNewMessage (BROADCAST foreground) DISPARADO');
+    final d = message.date ?? 0;
+    if (d > _lastSeenDate) _lastSeenDate = d;
+    await _procesar(message, 'BROADCAST');
+  }
+
+  /// Analiza un SMS, notifica si es riesgoso y avisa a la pantalla.
+  static Future<void> _procesar(SmsMessage message, String origen) async {
+    _log('🔎 ($origen) procesando: remitente=${message.address} bodyLen=${message.body?.length}');
     final body = message.body ?? '';
     AnalysisResult? res;
     if (body.trim().isNotEmpty) {
       try {
-        _log('   -> llamando analyzeSms(auto:true)...');
         final out = await AnalysisService.analyzeSms(body, message.address, auto: true);
         res = out.result;
-        _log('   <- err=${out.error}  prob=${res?.aiProbability}  veredicto=${res?.veredicto}  estado=${res?.estado}');
+        _log('   <- err=${out.error} prob=${res?.aiProbability} veredicto=${res?.veredicto} estado=${res?.estado}');
         if (res != null && res.estado == 'OK' && res.aiProbability >= 60) {
-          _log('   ⚠️ riesgo>=60 -> mostrando notificación');
+          _log('   ⚠️ riesgo>=60 -> notificando');
           await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
         } else {
           _log('   riesgo<60 o sin resultado -> NO notifico');
@@ -111,10 +171,9 @@ class SmsMonitorService {
       _log('   body vacío -> no analizo');
     }
     if (onAnalyzed != null) {
-      _log('   -> actualizando lista en pantalla (onAnalyzed != null)');
       onAnalyzed!.call(message, res);
     } else {
-      _log('   onAnalyzed == null (pantalla de monitoreo NO abierta) -> no actualizo lista');
+      _log('   onAnalyzed == null (pantalla no abierta)');
     }
   }
 }
