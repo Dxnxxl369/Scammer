@@ -24,6 +24,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   AnalysisResult? _lastResult;
   File? _selectedFile;
   final _textController = TextEditingController();
+  final _codeController = TextEditingController();
+  String _selectedLanguage = 'auto';
+  final List<String> _languages = ['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql'];
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
   
   final List<Map<String, dynamic>> _modules = [
     {'id': 'TEXTO', 'label': 'Texto', 'icon': LucideIcons.fileText},
@@ -31,6 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'id': 'IMAGEN', 'label': 'Imagen', 'icon': LucideIcons.image},
     {'id': 'VIDEO', 'label': 'Video', 'icon': LucideIcons.video},
     {'id': 'AUDIO', 'label': 'Audio', 'icon': LucideIcons.music},
+    {'id': 'CODIGO', 'label': 'Código', 'icon': LucideIcons.code},
   ];
 
   Future<void> _handlePickFile() async {
@@ -56,7 +67,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _handleStartScan() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    
+
+    if (_selectedModule == 'CODIGO') {
+      if (_codeController.text.trim().isEmpty) return;
+      setState(() => _isAnalyzing = true);
+      try {
+        final out = await AnalysisService.analyzeCode(
+          _codeController.text,
+          _selectedLanguage == 'auto' ? null : _selectedLanguage,
+        );
+        if (out.error != null) {
+          if (out.error!.contains('LIMITE')) {
+            _showLimitDialog('LIVIANOS');
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(out.error!.toUpperCase())),
+            );
+          }
+        } else {
+          final res = out.result!;
+          if (res.estado != null && res.estado != 'OK') {
+            // Fragmento insuficiente u otro estado no-OK: avisar sin abrir reporte
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(res.details.toUpperCase())),
+              );
+            }
+          } else {
+            await auth.refreshUser();
+            setState(() => _lastResult = res);
+          }
+        }
+      } finally {
+        if (mounted) setState(() => _isAnalyzing = false);
+      }
+      return;
+    }
+
     if (_selectedModule == 'TEXTO') {
       if (_textController.text.isEmpty) return;
       setState(() => _isAnalyzing = true);
@@ -263,6 +310,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
+    if (_selectedModule == 'CODIGO') {
+      return Expanded(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.getCard(isDark),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.getBorder(isDark)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.code, size: 16, color: AppColors.textMuted),
+                  const SizedBox(width: 10),
+                  const Text('LENGUAJE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.textMuted, letterSpacing: 1)),
+                  const Spacer(),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedLanguage,
+                      isDense: true,
+                      dropdownColor: AppColors.getCard(isDark),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.accent),
+                      items: _languages
+                          .map((l) => DropdownMenuItem(value: l, child: Text(l.toUpperCase())))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedLanguage = v ?? 'auto'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.getCard(isDark),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.getBorder(isDark)),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: TextField(
+                  controller: _codeController,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13),
+                  decoration: const InputDecoration(
+                    hintText: '// PEGA CÓDIGO FUENTE AQUÍ...',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'LA DETECCIÓN DE CÓDIGO IA NO ES 100% FIABLE: ES UN INDICIO, NO UNA ACUSACIÓN.',
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textMuted, letterSpacing: 0.5, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Expanded(
       child: GestureDetector(
         onTap: _handlePickFile,
@@ -342,6 +455,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(color: AppColors.getCard(isDark), borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.getBorder(isDark))),
               child: Text(res.content, style: const TextStyle(fontStyle: FontStyle.italic, fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
+
+          if (res.type == 'codigo')
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: AppColors.getCard(isDark), borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.getBorder(isDark))),
+              child: Text(res.content, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12)),
             ),
 
           const SizedBox(height: 32),

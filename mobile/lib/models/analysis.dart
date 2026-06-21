@@ -27,6 +27,7 @@ class AnalysisResult {
   final String? extension;
   final List<CriticalPoint> criticalPoints;
   final DateTime date;
+  final String? estado; // 'OK' | 'INSUFICIENTE' | 'MOTOR_NO_DISPONIBLE' (análisis de código)
 
   String get veredicto => verdict;
 
@@ -41,6 +42,7 @@ class AnalysisResult {
     this.extension,
     required this.criticalPoints,
     required this.date,
+    this.estado,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -57,6 +59,7 @@ class AnalysisResult {
               ?.map((p) => CriticalPoint.fromJson(p))
               .toList() ?? [],
       date: DateTime.parse(json['fecha'] ?? DateTime.now().toIso8601String()),
+      estado: json['estado'],
     );
   }
 }

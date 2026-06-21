@@ -23,6 +23,29 @@ class AnalysisService {
     return null;
   }
 
+  /// Detección de código generado por IA (vía perplejidad).
+  /// Devuelve el resultado en caso de éxito, o un mensaje de error
+  /// (límite, motor no disponible, conexión). Para fragmentos demasiado cortos
+  /// el resultado llega con estado 'INSUFICIENTE'.
+  static Future<({AnalysisResult? result, String? error})> analyzeCode(
+      String code, String? language) async {
+    try {
+      final response = await ApiService.post('/analisis/codigo/', {
+        'codigo': code,
+        if (language != null) 'lenguaje': language,
+      });
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['exito'] == true) {
+        return (result: AnalysisResult.fromJson(data['datos']), error: null);
+      }
+      final msg = data['error'] != null ? data['error']['mensaje'] : null;
+      return (result: null, error: (msg ?? 'No se pudo analizar el código.').toString());
+    } catch (e) {
+      print("Analyze Code Error: $e");
+      return (result: null, error: 'Error de conexión con el motor de análisis.');
+    }
+  }
+
   static Future<AnalysisResult?> analyzeFile(File file, String type) async {
     try {
       final headers = await ApiService.getHeaders();
