@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Notificaciones push (requerido en Android 13+/API 33) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Monitoreo automatico de SMS entrante (solo Android, fuera de Play Store) -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+    <uses-permission android:name="android.permission.READ_SMS"/>
 
     <application
         android:label="Scammer"

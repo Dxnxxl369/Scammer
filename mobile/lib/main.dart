@@ -13,6 +13,7 @@ import 'screens/admin_settings_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/analysis_detail_screen.dart';
 import 'screens/admin_users_screen.dart';
+import 'screens/sms_monitor_screen.dart';
 import 'models/analysis.dart';
 import 'services/firebase_service.dart';
 
@@ -56,6 +57,7 @@ class ScammerApp extends StatelessWidget {
         '/notifications': (context) => const NotificationsScreen(),
         '/analysis_detail': (context) => AnalysisDetailScreen(analysis: ModalRoute.of(context)!.settings.arguments as AnalysisResult),
         '/admin_users': (context) => const AdminUsersScreen(),
+        '/sms_monitor': (context) => const SmsMonitorScreen(),
       },
     );
   }

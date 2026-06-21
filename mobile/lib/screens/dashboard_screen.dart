@@ -466,6 +466,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'SE ANALIZAN ENLACES E INTENCIÓN DEL MENSAJE. NO ABRAS LINKS SOSPECHOSOS.',
               style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textMuted, letterSpacing: 0.5, height: 1.4),
             ),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => Navigator.pushNamed(context, '/sms_monitor'),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.accent.withOpacity(0.5)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(LucideIcons.shieldCheck, size: 16, color: AppColors.accent),
+                    SizedBox(width: 8),
+                    Text('MONITOREO AUTOMÁTICO (ANDROID)',
+                        style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5)),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       );

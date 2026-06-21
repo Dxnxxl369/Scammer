@@ -84,9 +84,10 @@ class AnalizarSmsView(AnalisisBaseView):
         if not texto or not str(texto).strip():
             return respuesta_error('DATOS_FALTANTES', 'Se requiere el texto del SMS', status.HTTP_400_BAD_REQUEST)
         remitente = request.data.get('remitente')
+        auto = str(request.data.get('auto', '')).lower() in ('true', '1', 'yes')
         try:
             from .sms_detector import analizar_sms
-            resultado = analizar_sms(identificador, str(texto), remitente, self.obtener_ip(request))
+            resultado = analizar_sms(identificador, str(texto), remitente, self.obtener_ip(request), auto=auto)
             return respuesta_exitosa(resultado)
         except Exception as e:
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)

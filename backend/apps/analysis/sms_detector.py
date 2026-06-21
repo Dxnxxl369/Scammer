@@ -188,8 +188,13 @@ def detectar(texto: str, remitente: Optional[str] = None) -> dict:
 
 
 def analizar_sms(identificador: str, texto: str, remitente: Optional[str] = None,
-                 ip: Optional[str] = None) -> dict:
-    """Orquesta: detecta, consume cuota liviana, persiste, alimenta dataset y bitácora."""
+                 ip: Optional[str] = None, auto: bool = False) -> dict:
+    """Orquesta: detecta, consume cuota liviana, persiste, alimenta dataset y bitácora.
+
+    Si auto=True (escaneo automático de SMS entrante), NO consume cuota ni persiste
+    ni notifica: solo evalúa y devuelve el veredicto (para que el cliente decida si
+    avisar). Así el monitoreo de fondo no agota los créditos del usuario.
+    """
     from .models import Analisis, DatoEntrenamiento
     from .services import BitacoraService, AnalisisService
 
@@ -207,9 +212,10 @@ def analizar_sms(identificador: str, texto: str, remitente: Optional[str] = None
         'puntosCriticos': puntos,
         'banderas': res.get('banderas', []),
         'estado': estado,
+        'auto': auto,
     }
 
-    if estado == ESTADO_OK:
+    if estado == ESTADO_OK and not auto:
         permitido, err = AnalisisService.verificar_y_descontar_intentos(identificador, es_pesado=False)
         if not permitido:
             raise Exception(err)

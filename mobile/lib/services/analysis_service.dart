@@ -47,13 +47,15 @@ class AnalysisService {
   }
 
   /// Detección de smishing (SMS fraudulento).
+  /// Si auto=true (monitoreo de SMS entrante), no consume cuota ni persiste.
   /// Devuelve el resultado o un mensaje de error (límite / conexión).
   static Future<({AnalysisResult? result, String? error})> analyzeSms(
-      String text, String? sender) async {
+      String text, String? sender, {bool auto = false}) async {
     try {
       final response = await ApiService.post('/analisis/sms/', {
         'texto': text,
         if (sender != null && sender.trim().isNotEmpty) 'remitente': sender.trim(),
+        if (auto) 'auto': true,
       });
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['exito'] == true) {
