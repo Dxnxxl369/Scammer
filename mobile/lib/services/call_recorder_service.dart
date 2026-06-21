@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 
-/// Graba audio por el micrófono (para analizar una llamada puesta en altavoz).
+/// Graba audio por el micrófono (para analizar una llamada puesta en altavoz) y
+/// guarda las grabaciones en una carpeta propia de la app, con nombre de
+/// fecha-hora, así no hay que buscarlas en el teléfono.
 ///
 /// Captura en WAV 16 kHz mono: es justo lo que espera el detector local, así
 /// el backend lo lee directo con soundfile (sin necesidad de PyAV) y no hay
@@ -11,6 +14,14 @@ class CallRecorderService {
   static final AudioRecorder _record = AudioRecorder();
   static String? _rutaActual;
 
+  /// Carpeta propia de la app donde quedan TODAS nuestras grabaciones de llamada.
+  static Future<Directory> carpetaLlamadas() async {
+    final base = await getApplicationDocumentsDirectory();
+    final dir = Directory('${base.path}/llamadas');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
   /// Pide (si hace falta) el permiso de micrófono.
   static Future<bool> tienePermiso() => _record.hasPermission();
 
@@ -18,8 +29,9 @@ class CallRecorderService {
   static Future<bool> iniciar() async {
     if (!await _record.hasPermission()) return false;
 
-    final dir = await getTemporaryDirectory();
-    _rutaActual = '${dir.path}/llamada_${DateTime.now().millisecondsSinceEpoch}.wav';
+    final dir = await carpetaLlamadas();
+    final fecha = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
+    _rutaActual = '${dir.path}/LLAMADA_$fecha.wav';
 
     await _record.start(
       const RecordConfig(
@@ -41,6 +53,19 @@ class CallRecorderService {
     if (destino == null) return null;
     final f = File(destino);
     return await f.exists() ? f : null;
+  }
+
+  /// La última grabación que hizo la app (la más reciente de nuestra carpeta).
+  static Future<File?> ultimaLocal() async {
+    final dir = await carpetaLlamadas();
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.wav'))
+        .toList();
+    if (files.isEmpty) return null;
+    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    return files.first;
   }
 
   /// Cancela la grabación y descarta el archivo.

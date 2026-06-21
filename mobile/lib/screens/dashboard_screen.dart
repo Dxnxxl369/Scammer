@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -145,45 +144,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _analizarUltimaGrabada() async {
     setState(() => _loadingRecording = true);
     try {
-      final permiso = await CallRecordingsService.pedirPermiso();
-      if (!permiso) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PERMISO DE AUDIO DENEGADO')),
-          );
-        }
-        return;
-      }
-      final rec = await CallRecordingsService.ultima();
-      if (rec == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('NO SE ENCONTRARON GRABACIONES DE LLAMADA')),
-          );
-        }
-        return;
-      }
-      _lastSeenRecordingMs = rec.dateAddedMs;
-      final file = await CallRecordingsService.cachear(rec.id);
+      // Lee de NUESTRA carpeta (la app graba y guarda ahí). No depende del teléfono.
+      final file = await CallRecorderService.ultimaLocal();
       if (file == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('NO SE PUDO LEER LA GRABACIÓN')),
+            const SnackBar(content: Text('AÚN NO GRABASTE NINGUNA LLAMADA. USÁ "GRABAR LLAMADA".')),
           );
         }
         return;
       }
-      // Renombrar con fecha-hora en números (de MediaStore) para saber cuándo se grabó
-      File archivoFinal = file;
-      try {
-        final ms = rec.dateAddedMs > 0 ? rec.dateAddedMs : DateTime.now().millisecondsSinceEpoch;
-        final fecha = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.fromMillisecondsSinceEpoch(ms));
-        final ext = file.path.contains('.') ? file.path.split('.').last : 'aac';
-        archivoFinal = await file.rename('${file.parent.path}/LLAMADA_$fecha.$ext');
-      } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _selectedFile = archivoFinal;
+        _selectedFile = file;
         _lastResult = null;
       });
       await _handleStartScan(); // analiza el archivo como 'llamada' (modelo local)
@@ -544,93 +517,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(LucideIcons.phoneCall, size: 38, color: AppColors.accent),
-          const SizedBox(height: 10),
-          const Text('LLAMADAS GRABADAS DEL TELÉFONO',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 12)),
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'Tu teléfono graba las llamadas. Detectamos la última y la analizamos.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, height: 1.4),
-            ),
-          ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _loadingRecording ? null : _analizarUltimaGrabada,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Center(
-                child: _loadingRecording
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('ANALIZAR ÚLTIMA LLAMADA GRABADA',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            padding: const EdgeInsets.only(left: 14, right: 4),
-            decoration: BoxDecoration(
-              color: AppColors.getBg(isDark),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.getBorder(isDark)),
-            ),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text('Avisarme de llamadas grabadas nuevas',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
-                ),
-                Switch(
-                  value: _autoDetectCalls,
-                  activeColor: AppColors.accent,
-                  onChanged: _toggleAutoDetect,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: Divider(color: AppColors.getBorder(isDark))),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('O GRABAR EN VIVO',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
-              ),
-              Expanded(child: Divider(color: AppColors.getBorder(isDark))),
-            ],
-          ),
-          const SizedBox(height: 12),
           GestureDetector(
             onTap: _startRecording,
             child: Container(
-              width: 68,
-              height: 68,
+              width: 92,
+              height: 92,
               decoration: BoxDecoration(
                 color: AppColors.accent.withOpacity(0.12),
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.accent, width: 2),
               ),
-              child: const Icon(LucideIcons.mic, size: 28, color: AppColors.accent),
+              child: const Icon(LucideIcons.mic, size: 38, color: AppColors.accent),
             ),
           ),
-          const SizedBox(height: 10),
-          const Text('GRABAR CON MICRÓFONO (ALTAVOZ)',
+          const SizedBox(height: 16),
+          const Text('GRABAR LLAMADA',
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 10)),
-          const SizedBox(height: 8),
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 13)),
+          const SizedBox(height: 6),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 22),
+            child: Text(
+              'Pon la llamada en ALTAVOZ y toca para grabar. Se guarda con fecha y se analiza al detener.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 18),
+          GestureDetector(
+            onTap: _loadingRecording ? null : _analizarUltimaGrabada,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: AppColors.getBg(isDark),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.accent),
+              ),
+              child: Center(
+                child: _loadingRecording
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
+                    : const Text('ANALIZAR ÚLTIMA GRABACIÓN',
+                        style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           TextButton.icon(
             onPressed: _handlePickFile,
             icon: const Icon(LucideIcons.uploadCloud, size: 14, color: AppColors.textMuted),
