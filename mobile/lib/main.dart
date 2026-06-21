@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'core/theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
@@ -20,6 +21,7 @@ import 'services/api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.initCommunicationPort();
   print('════════════════ SCAMMER MOVIL ════════════════');
   print('[API] Backend en uso => ${ApiService.baseUrl}');
   print('════════════════════════════════════════════════');

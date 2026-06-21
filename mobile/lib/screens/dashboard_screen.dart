@@ -10,6 +10,8 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/evidence_player.dart';
 import '../services/analysis_service.dart';
 import '../services/call_recorder_service.dart';
+import '../services/call_monitor_control.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../services/call_recordings_service.dart';
 import '../services/notification_helper.dart';
 import '../models/analysis.dart';
@@ -36,6 +38,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _loadingRecording = false;
   int _lastSeenRecordingMs = 0;
   Timer? _callPollTimer;
+  // Grabación automática de llamadas (foreground service)
+  bool _autoRecordCalls = false;
+  bool _togglingAutoRecord = false;
   final _textController = TextEditingController();
   final _codeController = TextEditingController();
   final _smsController = TextEditingController();
@@ -44,7 +49,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final List<String> _languages = ['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql'];
 
   @override
+  void initState() {
+    super.initState();
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+    _refreshAutoRecordState();
+  }
+
+  Future<void> _refreshAutoRecordState() async {
+    final activo = await CallMonitorControl.estaActivo();
+    if (mounted) setState(() => _autoRecordCalls = activo);
+  }
+
+  // El servicio en primer plano avisa que grabó una llamada (manda la ruta).
+  void _onTaskData(Object data) {
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('📞 Llamada grabada — toca ANALIZAR ÚLTIMA GRABACIÓN'),
+      duration: Duration(seconds: 4),
+    ));
+  }
+
+  Future<void> _onToggleAutoRecord(bool value) async {
+    setState(() => _togglingAutoRecord = true);
+    try {
+      if (value) {
+        final ok = await CallMonitorControl.activar();
+        if (!ok) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Faltan permisos de micrófono o estado de llamada'),
+            ));
+            setState(() {
+              _autoRecordCalls = false;
+              _togglingAutoRecord = false;
+            });
+          }
+          return;
+        }
+      } else {
+        await CallMonitorControl.desactivar();
+      }
+      if (mounted) {
+        setState(() {
+          _autoRecordCalls = value;
+          _togglingAutoRecord = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _togglingAutoRecord = false);
+    }
+  }
+
+  @override
   void dispose() {
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     _textController.dispose();
     _codeController.dispose();
     _smsController.dispose();
@@ -537,11 +596,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildAutoRecordToggle(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _autoRecordCalls ? AppColors.accent.withOpacity(0.10) : AppColors.getBg(isDark),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _autoRecordCalls ? AppColors.accent : AppColors.getBorder(isDark)),
+      ),
+      child: Row(
+        children: [
+          Icon(_autoRecordCalls ? LucideIcons.phoneCall : LucideIcons.phone,
+              size: 22, color: _autoRecordCalls ? AppColors.accent : AppColors.textMuted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('GRABAR LLAMADAS AUTOMÁTICAMENTE',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10.5, letterSpacing: 0.6)),
+                const SizedBox(height: 3),
+                Text(
+                  _autoRecordCalls
+                      ? 'Activo: graba sola cada llamada (notificación fija mientras está prendido).'
+                      : 'Graba sola al entrar/salir una llamada, sin tocar nada.',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w600, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          _togglingAutoRecord
+              ? const SizedBox(width: 36, height: 36, child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent)))
+              : Switch(
+                  value: _autoRecordCalls,
+                  activeColor: AppColors.accent,
+                  onChanged: _onToggleAutoRecord,
+                ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLlamadaIdle(bool isDark) {
     return SingleChildScrollView(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          _buildAutoRecordToggle(isDark),
+          const SizedBox(height: 22),
           GestureDetector(
             onTap: _startRecording,
             child: Container(
