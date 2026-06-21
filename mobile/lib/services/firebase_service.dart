@@ -14,29 +14,35 @@ Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
 
 class FirebaseService {
   static Future<void> initialize() async {
-    await Firebase.initializeApp();
+    // Init best-effort: si falta google-services.json (Firebase sin configurar),
+    // NO debe tumbar la app — solo quedan deshabilitadas las notificaciones push.
+    try {
+      await Firebase.initializeApp();
 
-    // Registrar el manejador de fondo antes de escuchar en primer plano.
-    FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+      // Registrar el manejador de fondo antes de escuchar en primer plano.
+      FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
 
-    // Solicitar permisos (iOS / Android 13+). Dispara el diálogo POST_NOTIFICATIONS.
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+      // Solicitar permisos (iOS / Android 13+). Dispara el diálogo POST_NOTIFICATIONS.
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    // Notificaciones recibidas con la app en primer plano.
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('ALERTA RECIBIDA EN PRIMER PLANO: ${message.notification?.title}');
-    });
+      // Notificaciones recibidas con la app en primer plano.
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('ALERTA RECIBIDA EN PRIMER PLANO: ${message.notification?.title}');
+      });
 
-    // Re-registrar el token en el backend cuando Firebase lo rote.
-    FirebaseMessaging.instance.onTokenRefresh.listen((String token) {
-      ApiService.post('/auth/fcm/', {'token': token});
-    });
+      // Re-registrar el token en el backend cuando Firebase lo rote.
+      FirebaseMessaging.instance.onTokenRefresh.listen((String token) {
+        ApiService.post('/auth/fcm/', {'token': token});
+      });
+    } catch (e) {
+      print('[FIREBASE] Inicializacion omitida (falta google-services.json?): $e');
+    }
   }
 
   static Future<void> registerToken() async {
