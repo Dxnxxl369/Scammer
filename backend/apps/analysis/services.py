@@ -120,19 +120,32 @@ class BitacoraService:
 
 class AnalisisService:
     @staticmethod
+    def _limites_plan(plan: str) -> dict:
+        """Límites del plan: primero desde la config editable por el admin
+        (ConfiguracionPlan en la BD), con fallback a los valores por defecto."""
+        defaults = {
+            'gratis': {'livianos': 10, 'pesados': 3},
+            'starter': {'livianos': 50, 'pesados': 15},
+            'pro': {'livianos': 999999, 'pesados': 50},
+            'elite': {'livianos': 999999, 'pesados': 999999},
+        }
+        base = defaults.get(plan, defaults['gratis'])
+        try:
+            from apps.authentication.models import ConfiguracionPlan
+            cfg = ConfiguracionPlan.objects(plan=plan).first()
+            if cfg:
+                return {'livianos': cfg.limite_livianos, 'pesados': cfg.limite_pesados}
+        except Exception:
+            pass
+        return base
+
+    @staticmethod
     def verificar_y_descontar_intentos(id_identificador: str, es_pesado: bool) -> tuple[bool, str]:
         usuario = Usuario.objects(id_supabase=id_identificador).first()
         if usuario:
             if usuario.bloqueado: return False, 'USUARIO_BLOQUEADO'
-            # Nuevos límites definidos por el usuario
-            limites = {
-                'gratis': {'livianos': 10, 'pesados': 3},
-                'starter': {'livianos': 50, 'pesados': 15},
-                'pro': {'livianos': 999999, 'pesados': 50},
-                'elite': {'livianos': 999999, 'pesados': 999999}
-            }
             plan = usuario.plan or 'gratis'
-            limite_actual = limites.get(plan, limites['gratis'])
+            limite_actual = AnalisisService._limites_plan(plan)
             if es_pesado:
                 if usuario.intentos_pesados >= limite_actual['pesados']: return False, 'LIMITE_ALCANZADO'
                 UsuarioService.incrementar_intentos_pesados(id_identificador)

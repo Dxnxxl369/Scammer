@@ -22,6 +22,12 @@ from .views_admin import (
     CambiarRolView,
     EstadisticasView,
 )
+from .views_pagos import (
+    PlanesView,
+    AdminConfigurarPlanView,
+    CrearCheckoutView,
+    StripeWebhookView,
+)
 
 urlpatterns = [
     path('health/', HealthCheckView.as_view(), name='health'),
@@ -43,4 +49,9 @@ urlpatterns = [
     path('admin/usuarios/<str:id_supabase>/plan/', CambiarPlanView.as_view(), name='admin_cambiar_plan'),
     path('admin/usuarios/<str:id_supabase>/rol/', CambiarRolView.as_view(), name='admin_cambiar_rol'),
     path('admin/estadisticas/', EstadisticasView.as_view(), name='admin_estadisticas'),
+    # ─── Pagos / Stripe ───
+    path('pagos/planes/', PlanesView.as_view(), name='pagos_planes'),
+    path('pagos/checkout/', CrearCheckoutView.as_view(), name='pagos_checkout'),
+    path('pagos/webhook/', StripeWebhookView.as_view(), name='pagos_webhook'),
+    path('admin/planes/<str:plan>/', AdminConfigurarPlanView.as_view(), name='admin_configurar_plan'),
 ]

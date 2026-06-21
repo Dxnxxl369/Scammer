@@ -26,6 +26,7 @@ transformers
 torch
 librosa
 firebase-admin
+stripe
 
 # Importados directamente por el código pero antes solo presentes de forma transitiva.
 # Se declaran para que una reinstalación limpia (pip install -r) no los omita:

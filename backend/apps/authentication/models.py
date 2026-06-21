@@ -100,3 +100,53 @@ class Anonimo(Document):
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
             'fecha_expiracion': self.fecha_expiracion.isoformat() if self.fecha_expiracion else None,
         }
+
+
+# Precios y límites por plan, editables por el administrador.
+# Los límites se leen desde aquí (con fallback a valores por defecto en el código).
+class ConfiguracionPlan(Document):
+    plan = StringField(required=True, unique=True, choices=['gratis', 'starter', 'pro', 'elite'])
+    precio_centavos = IntField(default=0, min_value=0)   # Stripe cobra en centavos (ej. 999 = $9.99)
+    moneda = StringField(default='usd', max_length=3)
+    limite_livianos = IntField(default=10, min_value=0)
+    limite_pesados = IntField(default=3, min_value=0)
+    activo = BooleanField(default=True)
+    fecha_actualizacion = DateTimeField(default=datetime.utcnow)
+
+    meta = {'collection': 'configuracion_planes'}
+
+    def to_dict(self):
+        return {
+            'plan': self.plan,
+            'precio_centavos': self.precio_centavos,
+            'precio': round((self.precio_centavos or 0) / 100, 2),
+            'moneda': self.moneda,
+            'limite_livianos': self.limite_livianos,
+            'limite_pesados': self.limite_pesados,
+            'activo': self.activo,
+        }
+
+
+# Registro de cada pago confirmado por Stripe (auditoría).
+class Pago(Document):
+    id_supabase = StringField(required=True, max_length=64)
+    plan = StringField(required=True)
+    monto_centavos = IntField(default=0)
+    moneda = StringField(default='usd', max_length=3)
+    stripe_session_id = StringField(max_length=255)
+    estado = StringField(default='completado')  # completado / pendiente / fallido
+    fecha_creacion = DateTimeField(default=datetime.utcnow)
+
+    meta = {'collection': 'pagos', 'ordering': ['-fecha_creacion']}
+
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'id_supabase': self.id_supabase,
+            'plan': self.plan,
+            'monto_centavos': self.monto_centavos,
+            'monto': round((self.monto_centavos or 0) / 100, 2),
+            'moneda': self.moneda,
+            'estado': self.estado,
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+        }
