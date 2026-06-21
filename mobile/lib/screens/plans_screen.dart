@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
@@ -19,6 +21,39 @@ class PlansScreen extends StatefulWidget {
 
 class _PlansScreenState extends State<PlansScreen> {
   bool _isUpdating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarPlanesBackend();
+  }
+
+  // Trae precios y límites configurados por el admin y actualiza lo que se muestra.
+  Future<void> _cargarPlanesBackend() async {
+    try {
+      final resp = await ApiService.get('/pagos/planes/');
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body);
+      final lista = (data['datos'] as List?) ?? [];
+      for (final item in lista) {
+        final idx = _plans.indexWhere((p) => p['id'] == item['plan']);
+        if (idx < 0) continue;
+        final precio = item['precio'];
+        if (precio != null) _plans[idx]['price'] = precio.toString();
+        final liv = item['limite_livianos'];
+        final pes = item['limite_pesados'];
+        final feats = List<String>.from(_plans[idx]['features'] ?? const []);
+        if (liv != null && feats.isNotEmpty) {
+          feats[0] = (liv >= 999999) ? 'Livianos Ilimitados' : '$liv Análisis Livianos';
+        }
+        if (pes != null && feats.length > 1) {
+          feats[1] = (pes >= 999999) ? 'Pesados Ilimitados' : '$pes Análisis Pesados';
+        }
+        _plans[idx]['features'] = feats;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
 
   final List<Map<String, dynamic>> _plans = [
     {
@@ -61,48 +96,32 @@ class _PlansScreenState extends State<PlansScreen> {
     }
   }
 
-  void _showPaymentModal(Map<String, dynamic> plan) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _PaymentModal(
-        plan: plan,
-        onConfirm: (cardData) => _handleUpgrade(plan['id'], cardData),
-      ),
-    );
-  }
-
-  Future<void> _handleUpgrade(String planId, Map<String, String> cardData) async {
-    // Validación de tarjeta simulada
-    final num = cardData['number'] ?? '';
-    final exp = cardData['expiry'] ?? '';
-    final cvc = cardData['cvv'] ?? '';
-    
-    if (num.length < 19 || exp.length < 5 || cvc.length < 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('POR FAVOR, COMPLETE LOS DATOS DE LA TARJETA (16 DÍGITOS, MM/YY, CVC)')),
-      );
-      return;
-    }
-
+  // Inicia el pago real con Stripe: pide la URL de checkout al backend y la abre.
+  // No se piden datos de tarjeta en la app (los pide la página segura de Stripe).
+  Future<void> _iniciarPagoStripe(String planId) async {
     setState(() => _isUpdating = true);
     try {
-      final response = await ApiService.post('/auth/suscripcion/', {'plan': planId});
-      if (response.statusCode == 200) {
-        final auth = Provider.of<AuthProvider>(context, listen: false);
-        await auth.refreshUser();
+      final response = await ApiService.post('/pagos/checkout/', {'plan': planId});
+      final data = jsonDecode(response.body);
+      final url = (data['datos'] is Map) ? data['datos']['url'] : null;
+      if (response.statusCode == 200 && url != null) {
+        final abierto = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
         if (mounted) {
-          Navigator.pop(context); // Cerrar modal de pago
-          _showSuccessDialog(planId);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(abierto
+                ? 'Completá el pago en el navegador. Al volver, tu plan se actualiza solo.'
+                : 'No se pudo abrir la página de pago. Probá de nuevo.'),
+            duration: const Duration(seconds: 5),
+          ));
         }
       } else {
-         throw Exception('Servidor rechazó el pago');
+        final msg = data['mensaje'] ?? data['error'] ?? 'No se pudo iniciar el pago';
+        throw Exception(msg);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ERROR EN PROTOCOLO DE PAGO. Verifique su conexión.')),
+          SnackBar(content: Text('Error al iniciar el pago: $e')),
         );
       }
     } finally {
@@ -259,7 +278,7 @@ class _PlansScreenState extends State<PlansScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: (isCurrent || _isUpdating) ? null : () => _showPaymentModal(plan),
+              onPressed: (isCurrent || _isUpdating) ? null : () => _iniciarPagoStripe(plan['id']),
               style: ElevatedButton.styleFrom(
                 backgroundColor: isCurrent ? Colors.grey[800] : plan['color'],
                 padding: const EdgeInsets.symmetric(vertical: 14),
