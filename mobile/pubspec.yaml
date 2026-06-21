@@ -56,6 +56,7 @@ dependencies:
   # Monitoreo automatico de SMS entrante (solo Android)
   another_telephony: ^0.2.0
   flutter_local_notifications: ^18.0.1
+  record: ^7.1.0
 
 dev_dependencies:
   flutter_test:

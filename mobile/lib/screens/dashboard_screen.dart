@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/evidence_player.dart';
 import '../services/analysis_service.dart';
+import '../services/call_recorder_service.dart';
 import '../models/analysis.dart';
 import '../widgets/master_header.dart';
 
@@ -23,6 +25,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isAnalyzing = false;
   AnalysisResult? _lastResult;
   File? _selectedFile;
+  // Grabación de llamada por micrófono (módulo LLAMADA)
+  bool _isRecording = false;
+  int _recordSeconds = 0;
+  Timer? _recordTimer;
   final _textController = TextEditingController();
   final _codeController = TextEditingController();
   final _smsController = TextEditingController();
@@ -36,6 +42,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _codeController.dispose();
     _smsController.dispose();
     _senderController.dispose();
+    _recordTimer?.cancel();
+    CallRecorderService.liberar();
     super.dispose();
   }
   
@@ -69,6 +77,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     }
+  }
+
+  Future<void> _startRecording() async {
+    final ok = await CallRecorderService.iniciar();
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PERMISO DE MICRÓFONO DENEGADO')),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _isRecording = true;
+      _recordSeconds = 0;
+      _lastResult = null;
+      _selectedFile = null;
+    });
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordSeconds++);
+    });
+  }
+
+  Future<void> _stopRecording() async {
+    _recordTimer?.cancel();
+    final file = await CallRecorderService.detener();
+    if (!mounted) return;
+    setState(() {
+      _isRecording = false;
+      if (file != null) _selectedFile = file;
+    });
+    if (file == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('NO SE PUDO GUARDAR LA GRABACIÓN')),
+      );
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordTimer?.cancel();
+    await CallRecorderService.cancelar();
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _recordSeconds = 0;
+      });
+    }
+  }
+
+  String _fmtDuracion(int s) {
+    final m = (s ~/ 60).toString().padLeft(2, '0');
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$m:$ss';
   }
 
   Future<void> _handleStartScan() async {
@@ -327,6 +388,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildLlamadaRecordZone(bool isDark) {
+    return Expanded(
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: AppColors.getCard(isDark),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(
+            color: _isRecording ? AppColors.accent : AppColors.getBorder(isDark),
+            width: 2,
+            style: _isRecording ? BorderStyle.solid : BorderStyle.none,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (!_isRecording) ...[
+              GestureDetector(
+                onTap: _startRecording,
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.accent, width: 2),
+                  ),
+                  child: const Icon(LucideIcons.mic, size: 40, color: AppColors.accent),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text('GRABAR LLAMADA',
+                  style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 13)),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  'Pon la llamada en ALTAVOZ y toca para grabar. Al detener se analiza con el modelo local.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, height: 1.4),
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextButton.icon(
+                onPressed: _handlePickFile,
+                icon: const Icon(LucideIcons.uploadCloud, size: 14, color: AppColors.textMuted),
+                label: const Text('O SUBIR UNA GRABACIÓN',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              ),
+            ] else ...[
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.accent, width: 3),
+                ),
+                child: IconButton(
+                  onPressed: _stopRecording,
+                  icon: const Icon(LucideIcons.square, size: 34, color: AppColors.accent),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(_fmtDuracion(_recordSeconds),
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 30, letterSpacing: 2, color: AppColors.accent)),
+              const SizedBox(height: 6),
+              const Text('GRABANDO… TOCA EL CUADRADO PARA DETENER',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              const SizedBox(height: 14),
+              TextButton(
+                onPressed: _cancelRecording,
+                child: const Text('CANCELAR',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputZone(bool isDark) {
     if (_selectedModule == 'TEXTO') {
       return Expanded(
@@ -491,6 +635,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
       );
+    }
+
+    if (_selectedModule == 'LLAMADA' && _selectedFile == null) {
+      return _buildLlamadaRecordZone(isDark);
     }
 
     return Expanded(
