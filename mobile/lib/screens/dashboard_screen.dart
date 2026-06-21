@@ -781,6 +781,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text('ARCHIVO LISTO PARA ESCANEO', style: TextStyle(color: AppColors.safe, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                const SizedBox(height: 10),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.getBg(isDark),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.getBorder(isDark)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text('UBICACIÓN REAL EN EL TELÉFONO',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                      const SizedBox(height: 4),
+                      SelectableText(
+                        _selectedFile!.path,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => setState(() => _selectedFile = null),
