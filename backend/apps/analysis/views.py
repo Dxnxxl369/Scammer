@@ -75,6 +75,23 @@ class AnalizarCodigoView(AnalisisBaseView):
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class AnalizarSmsView(AnalisisBaseView):
+    def post(self, request):
+        identificador = self.obtener_identificador(request)
+        if not identificador:
+            return respuesta_error('IDENTIFICADOR_REQUERIDO', 'No hay sesión activa', status.HTTP_401_UNAUTHORIZED)
+        texto = request.data.get('texto') or request.data.get('mensaje')
+        if not texto or not str(texto).strip():
+            return respuesta_error('DATOS_FALTANTES', 'Se requiere el texto del SMS', status.HTTP_400_BAD_REQUEST)
+        remitente = request.data.get('remitente')
+        try:
+            from .sms_detector import analizar_sms
+            resultado = analizar_sms(identificador, str(texto), remitente, self.obtener_ip(request))
+            return respuesta_exitosa(resultado)
+        except Exception as e:
+            return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class AnalizarImagenView(AnalisisBaseView):
     def post(self, request):
         identificador = self.obtener_identificador(request)

@@ -46,6 +46,27 @@ class AnalysisService {
     }
   }
 
+  /// Detección de smishing (SMS fraudulento).
+  /// Devuelve el resultado o un mensaje de error (límite / conexión).
+  static Future<({AnalysisResult? result, String? error})> analyzeSms(
+      String text, String? sender) async {
+    try {
+      final response = await ApiService.post('/analisis/sms/', {
+        'texto': text,
+        if (sender != null && sender.trim().isNotEmpty) 'remitente': sender.trim(),
+      });
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['exito'] == true) {
+        return (result: AnalysisResult.fromJson(data['datos']), error: null);
+      }
+      final msg = data['error'] != null ? data['error']['mensaje'] : null;
+      return (result: null, error: (msg ?? 'No se pudo analizar el SMS.').toString());
+    } catch (e) {
+      print("Analyze SMS Error: $e");
+      return (result: null, error: 'Error de conexión con el servidor.');
+    }
+  }
+
   static Future<AnalysisResult?> analyzeFile(File file, String type) async {
     try {
       final headers = await ApiService.getHeaders();

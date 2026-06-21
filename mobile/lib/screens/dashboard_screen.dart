@@ -25,6 +25,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   File? _selectedFile;
   final _textController = TextEditingController();
   final _codeController = TextEditingController();
+  final _smsController = TextEditingController();
+  final _senderController = TextEditingController();
   String _selectedLanguage = 'auto';
   final List<String> _languages = ['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql'];
 
@@ -32,6 +34,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _textController.dispose();
     _codeController.dispose();
+    _smsController.dispose();
+    _senderController.dispose();
     super.dispose();
   }
   
@@ -42,6 +46,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'id': 'VIDEO', 'label': 'Video', 'icon': LucideIcons.video},
     {'id': 'AUDIO', 'label': 'Audio', 'icon': LucideIcons.music},
     {'id': 'CODIGO', 'label': 'Código', 'icon': LucideIcons.code},
+    {'id': 'SMS', 'label': 'SMS', 'icon': LucideIcons.messageSquare},
   ];
 
   Future<void> _handlePickFile() async {
@@ -88,6 +93,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final res = out.result!;
           if (res.estado != null && res.estado != 'OK') {
             // Fragmento insuficiente u otro estado no-OK: avisar sin abrir reporte
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(res.details.toUpperCase())),
+              );
+            }
+          } else {
+            await auth.refreshUser();
+            setState(() => _lastResult = res);
+          }
+        }
+      } finally {
+        if (mounted) setState(() => _isAnalyzing = false);
+      }
+      return;
+    }
+
+    if (_selectedModule == 'SMS') {
+      if (_smsController.text.trim().isEmpty) return;
+      setState(() => _isAnalyzing = true);
+      try {
+        final out = await AnalysisService.analyzeSms(
+          _smsController.text,
+          _senderController.text,
+        );
+        if (out.error != null) {
+          if (out.error!.contains('LIMITE')) {
+            _showLimitDialog('LIVIANOS');
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(out.error!.toUpperCase())),
+            );
+          }
+        } else {
+          final res = out.result!;
+          if (res.estado != null && res.estado != 'OK') {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(res.details.toUpperCase())),
@@ -376,6 +416,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
+    if (_selectedModule == 'SMS') {
+      return Expanded(
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.getCard(isDark),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.getBorder(isDark)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: TextField(
+                controller: _senderController,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'REMITENTE (OPCIONAL)',
+                  border: InputBorder.none,
+                  icon: Icon(LucideIcons.user, size: 16, color: AppColors.textMuted),
+                  hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.getCard(isDark),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.getBorder(isDark)),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: TextField(
+                  controller: _smsController,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  decoration: const InputDecoration(
+                    hintText: 'PEGA AQUÍ EL SMS SOSPECHOSO...',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'SE ANALIZAN ENLACES E INTENCIÓN DEL MENSAJE. NO ABRAS LINKS SOSPECHOSOS.',
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textMuted, letterSpacing: 0.5, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Expanded(
       child: GestureDetector(
         onTap: _handlePickFile,
@@ -463,6 +558,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: AppColors.getCard(isDark), borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.getBorder(isDark))),
               child: Text(res.content, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+
+          if (res.type == 'sms')
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: AppColors.getCard(isDark), borderRadius: BorderRadius.circular(24), border: Border.all(color: AppColors.getBorder(isDark))),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(LucideIcons.messageSquare, size: 16, color: AppColors.textMuted),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(res.content, style: const TextStyle(fontStyle: FontStyle.italic, fontWeight: FontWeight.bold, fontSize: 13))),
+                ],
+              ),
             ),
 
           const SizedBox(height: 32),
