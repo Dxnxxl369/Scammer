@@ -32,15 +32,23 @@ class CallMonitorControl {
   static Future<bool> pedirPermisos() async {
     final mic = await Permission.microphone.request();
     final phone = await Permission.phone.request();
-    await Permission.notification.request();
+    final notif = await Permission.notification.request();
+    print('[CALL-MON] permisos -> microfono=$mic  telefono(READ_PHONE_STATE)=$phone  notif=$notif');
     return mic.isGranted && phone.isGranted;
   }
 
   /// Arranca el servicio. Devuelve false si faltan permisos o fallo el arranque.
   static Future<bool> activar() async {
-    if (!await pedirPermisos()) return false;
+    if (!await pedirPermisos()) {
+      print('[CALL-MON] ❌ activar abortado: faltan permisos');
+      return false;
+    }
     _initService();
-    if (await FlutterForegroundTask.isRunningService) return true;
+    if (await FlutterForegroundTask.isRunningService) {
+      print('[CALL-MON] servicio ya estaba corriendo');
+      return true;
+    }
+    print('[CALL-MON] arrancando servicio en primer plano...');
     final res = await FlutterForegroundTask.startService(
       serviceId: _serviceId,
       notificationTitle: 'Monitoreando llamadas',
@@ -48,7 +56,9 @@ class CallMonitorControl {
       serviceTypes: [ForegroundServiceTypes.microphone],
       callback: startCallMonitor,
     );
-    return res is ServiceRequestSuccess;
+    final ok = res is ServiceRequestSuccess;
+    print('[CALL-MON] startService -> ${ok ? "OK ✅" : "FALLO ❌ ($res)"}');
+    return ok;
   }
 
   static Future<void> desactivar() async {
