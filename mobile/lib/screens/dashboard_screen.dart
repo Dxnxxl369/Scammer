@@ -140,6 +140,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return '$m:$ss';
   }
 
+  /// Duración del WAV calculada desde su tamaño (WAV PCM 16 kHz mono 16-bit =
+  /// 32000 bytes/seg). Si coincide con lo que grabaste, el archivo quedó completo.
+  String? _duracionArchivoWav(File f) {
+    try {
+      if (!f.path.toLowerCase().endsWith('.wav')) return null;
+      final bytes = f.lengthSync();
+      final segundos = ((bytes - 44) / (16000 * 1 * 2)).round();
+      if (segundos < 0) return null;
+      return _fmtDuracion(segundos);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _filaDuracion() {
+    if (_selectedFile == null) return const SizedBox.shrink();
+    final dur = _duracionArchivoWav(_selectedFile!);
+    if (dur == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text('⏱ DURACIÓN DEL ARCHIVO: $dur',
+          style: const TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1)),
+    );
+  }
+
   // ===== Opción A: detectar y analizar grabaciones de llamada del teléfono =====
   Future<void> _analizarUltimaGrabada() async {
     setState(() => _loadingRecording = true);
@@ -803,6 +828,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
+                _filaDuracion(),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => setState(() => _selectedFile = null),
