@@ -164,6 +164,10 @@ def analizar_codigo(identificador: str, codigo: str, lenguaje: Optional[str] = N
 
     # Solo persistimos un análisis real (con probabilidad numérica)
     if estado == ESTADO_OK:
+        # Consumir un intento liviano, igual que el resto de analizadores
+        permitido, err = AnalisisService.verificar_y_descontar_intentos(identificador, es_pesado=False)
+        if not permitido:
+            raise Exception(err)
         try:
             analisis = Analisis(
                 id_supabase=identificador,

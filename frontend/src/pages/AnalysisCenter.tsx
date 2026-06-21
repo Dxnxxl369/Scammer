@@ -5,6 +5,7 @@ import { useAnonimo } from '../hooks/useAnonimo'
 import { useTheme } from '../contexts/ThemeContext'
 import { analysisService } from '../services/analysisService'
 import type { AnalisisResultado } from '../services/analysisService'
+import { codigoService } from '../services/codigoService'
 import { 
   ShieldCheck, 
   UploadCloud, 
@@ -39,7 +40,7 @@ const PLAN_LIMITS = {
   elite: { livianos: 999999, pesados: 999999 },
 }
 
-type TabType = 'INTELIGENCIA' | 'ARCHIVOS' | 'IMAGEN' | 'VIDEO' | 'AUDIO' | 'RED'
+type TabType = 'INTELIGENCIA' | 'ARCHIVOS' | 'IMAGEN' | 'VIDEO' | 'AUDIO' | 'RED' | 'CODIGO'
 
 export function AnalysisCenter() {
   const { usuario } = useAuth()
@@ -53,6 +54,8 @@ export function AnalysisCenter() {
   const [tabActiva, setTabActiva] = useState<TabType>('INTELIGENCIA')
   
   const [texto, setTexto] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [lenguaje, setLenguaje] = useState('auto')
   const [archivo, setArchivo] = useState<File | null>(null)
   const [url, setUrl] = useState('')
   const [showLimitModal, setShowLimitModal] = useState(false)
@@ -116,7 +119,34 @@ export function AnalysisCenter() {
 
     try {
       let res: AnalisisResultado
-      
+
+      if (tabActiva === 'CODIGO') {
+        const r = await codigoService.analizar(codigo, lenguaje === 'auto' ? undefined : lenguaje)
+        if (!r.ok || !r.data) {
+          if (r.error === 'LIMITE_ALCANZADO' || r.error?.includes('LIMITE')) setShowLimitModal(true)
+          else alert(r.error || 'Error en el análisis de código.')
+          return
+        }
+        if (r.data.estado !== 'OK') {
+          alert(r.data.detalles)
+          return
+        }
+        const d = r.data
+        setResultado({
+          id: d.id || 'CODIGO',
+          tipo: 'codigo',
+          probabilidadIA: d.probabilidadIA,
+          veredicto: d.veredicto,
+          detalles: d.detalles,
+          puntosCriticos: (d.puntosCriticos || []).map(p => ({ titulo: p.titulo, descripcion: p.descripcion ?? '', score: p.score })),
+          fecha: d.fecha || new Date().toISOString(),
+          contenido: d.contenido ?? codigo,
+        })
+        setVista('results')
+        if (!usuario) await recargarAnonimo()
+        return
+      }
+
       if (tabActiva === 'INTELIGENCIA' && texto.trim()) {
         res = await analysisService.analizarTexto(texto)
       } 
@@ -175,7 +205,7 @@ export function AnalysisCenter() {
           <div className="scan-line hidden group-hover:block" style={{ background: 'var(--accent)', boxShadow: '0 0 15px var(--accent)' }}></div>
           
           <div className="flex p-4 gap-2 border-b border-[var(--border-color)] bg-black/10">
-            {(['INTELIGENCIA', 'ARCHIVOS', 'IMAGEN', 'VIDEO', 'AUDIO', 'RED'] as TabType[]).map(t => (
+            {(['INTELIGENCIA', 'ARCHIVOS', 'IMAGEN', 'VIDEO', 'AUDIO', 'RED', 'CODIGO'] as TabType[]).map(t => (
                 <button 
                   key={t}
                   onClick={() => { setTabActiva(t); setArchivo(null); }}
@@ -187,7 +217,8 @@ export function AnalysisCenter() {
                   {t === 'VIDEO' && <Video size={16} />}
                   {t === 'AUDIO' && <Music size={16} />}
                   {t === 'RED' && <Globe size={16} />}
-                  {t === 'RED' ? 'SITIOS WEB' : t === 'AUDIO' ? 'VOZ/AUDIO' : t}
+                  {t === 'CODIGO' && <Code size={16} />}
+                  {t === 'RED' ? 'SITIOS WEB' : t === 'AUDIO' ? 'VOZ/AUDIO' : t === 'CODIGO' ? 'CÓDIGO' : t}
                 </button>
             ))}
           </div>
@@ -268,9 +299,36 @@ export function AnalysisCenter() {
               </div>
             )}
 
+            {tabActiva === 'CODIGO' && (
+              <div className="w-full space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.3em]">Pegue código fuente para análisis de perplejidad</p>
+                  <select
+                    value={lenguaje}
+                    onChange={(e) => setLenguaje(e.target.value)}
+                    className="bg-white/[0.03] border border-[var(--border-color)] text-[var(--text-main)] rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-[var(--accent)] cursor-pointer appearance-none shrink-0"
+                  >
+                    {['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql'].map(l => (
+                      <option key={l} value={l}>{l.toUpperCase()}</option>
+                    ))}
+                  </select>
+                </div>
+                <textarea
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value)}
+                  spellCheck={false}
+                  placeholder="// Pegue una función o archivo de código fuente..."
+                  className="w-full h-72 bg-white/[0.03] border border-[var(--border-color)] rounded-[32px] p-8 text-[var(--text-main)] text-[13px] font-mono placeholder:opacity-10 focus:outline-none focus:border-[var(--accent)] transition-all resize-none custom-scrollbar"
+                />
+                <p className="text-[9px] text-[var(--text-muted)] text-center font-black uppercase tracking-[0.3em] leading-relaxed">
+                  La detección de código IA no es 100% fiable: tómelo como indicio, no como acusación.
+                </p>
+              </div>
+            )}
+
             <button 
               onClick={handleAnalizar}
-              disabled={cargando || (tabActiva === 'INTELIGENCIA' ? !texto.trim() : tabActiva === 'RED' ? !url.trim() : !archivo)}
+              disabled={cargando || (tabActiva === 'INTELIGENCIA' ? !texto.trim() : tabActiva === 'RED' ? !url.trim() : tabActiva === 'CODIGO' ? !codigo.trim() : !archivo)}
               className="btn-primary mt-12 px-20 py-6 rounded-2xl text-xs font-black tracking-[0.4em] uppercase transition-all flex items-center gap-3 disabled:opacity-10 cursor-pointer"
               style={{ background: theme === 'light' ? 'var(--text-main)' : 'white', color: theme === 'light' ? 'var(--bg)' : 'black' }}
             >

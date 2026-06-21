@@ -24,8 +24,7 @@ import {
   Inbox,
   AlertTriangle,
   CreditCard,
-  UserPlus,
-  Code2
+  UserPlus
 } from 'lucide-react'
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
@@ -51,7 +50,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     if (usuario) {
       return [
         { label: 'Analizador', icon: <Search size={20} />, path: '/dashboard' },
-        { label: 'Detector Código', icon: <Code2 size={20} />, path: '/detector-codigo' },
         { label: 'Historial', icon: <History size={20} />, path: '/historial' },
         { label: 'Planes', icon: <Activity size={20} />, path: '/planes' },
         { label: 'Academia', icon: <GraduationCap size={20} />, path: '/academia' },
