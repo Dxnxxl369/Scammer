@@ -3,14 +3,15 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Base URL del backend.
-  // Por defecto usa localhost:8002 porque el teléfono llega al backend de la PC
-  // vía `adb reverse tcp:8002 tcp:8002` (el localhost del teléfono -> 8002 de la PC).
-  // Sobreescribible por build sin tocar código, p.ej. con la IP de la PC:
-  //   flutter run --dart-define=API_BASE_URL=http://192.168.199.97:8002/api
+  // Base URL del backend. Por defecto apunta a la IP de la PC en la Wi-Fi
+  // (el teléfono la alcanza directo; verificado con /api/health/ -> 200).
+  // Si cambia tu red/IP, edita ESTA línea (o pásala por build):
+  //   flutter run --dart-define=API_BASE_URL=http://OTRA_IP:8002/api
+  // NOTA: mobile/.env NO se usa (no hay flutter_dotenv) y un .env tampoco
+  // serviría al isolate de fondo de SMS; por eso la URL vive aquí en código.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8002/api',
+    defaultValue: 'http://192.168.199.97:8002/api',
   );
 
   static Future<Map<String, String>> getHeaders() async {
@@ -25,29 +26,39 @@ class ApiService {
     };
   }
 
+  // Loguea cada llamada para ver a qué backend va y qué responde
+  // (aparece en la consola de `flutter run`). Útil para depurar conectividad.
+  static Future<http.Response> _log(
+    String metodo,
+    String url,
+    Future<http.Response> Function() call,
+  ) async {
+    print('[API] $metodo $url');
+    try {
+      final res = await call();
+      print('[API] $metodo $url -> HTTP ${res.statusCode}');
+      return res;
+    } catch (e) {
+      print('[API] $metodo $url -> ERROR DE RED: $e');
+      rethrow;
+    }
+  }
+
   static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
     final headers = await getHeaders();
-    return http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: headers,
-      body: jsonEncode(body),
-    );
+    final url = '$baseUrl$endpoint';
+    return _log('POST', url, () => http.post(Uri.parse(url), headers: headers, body: jsonEncode(body)));
   }
 
   static Future<http.Response> get(String endpoint) async {
     final headers = await getHeaders();
-    return http.get(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: headers,
-    );
+    final url = '$baseUrl$endpoint';
+    return _log('GET', url, () => http.get(Uri.parse(url), headers: headers));
   }
 
   static Future<http.Response> patch(String endpoint, Map<String, dynamic> body) async {
     final headers = await getHeaders();
-    return http.patch(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: headers,
-      body: jsonEncode(body),
-    );
+    final url = '$baseUrl$endpoint';
+    return _log('PATCH', url, () => http.patch(Uri.parse(url), headers: headers, body: jsonEncode(body)));
   }
 }

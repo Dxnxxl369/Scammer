@@ -16,13 +16,18 @@ import 'screens/admin_users_screen.dart';
 import 'screens/sms_monitor_screen.dart';
 import 'models/analysis.dart';
 import 'services/firebase_service.dart';
+import 'services/api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  print('════════════════ SCAMMER MOVIL ════════════════');
+  print('[API] Backend en uso => ${ApiService.baseUrl}');
+  print('════════════════════════════════════════════════');
   await FirebaseService.initialize();
-  
+  // Cargar el tema guardado antes de iniciar la app
   runApp(
     MultiProvider(
+
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
       ],
@@ -32,6 +37,9 @@ void main() async {
 }
 
 class ScammerApp extends StatelessWidget {
+
+
+
   const ScammerApp({super.key});
 
   @override
@@ -58,6 +66,7 @@ class ScammerApp extends StatelessWidget {
         '/analysis_detail': (context) => AnalysisDetailScreen(analysis: ModalRoute.of(context)!.settings.arguments as AnalysisResult),
         '/admin_users': (context) => const AdminUsersScreen(),
         '/sms_monitor': (context) => const SmsMonitorScreen(),
+      
       },
     );
   }
