@@ -604,16 +604,17 @@ class AnalisisService:
         peso_archivo_mb = archivo.size / (1024 * 1024)
 
         try:
-            import gc, librosa
+            import gc
             from . import audio_detector
             archivo.seek(0)
-            audio_data, sr = librosa.load(io.BytesIO(archivo.read()), sr=16000)
+            # Loader robusto: soundfile (WAV/MP3) con fallback PyAV (AAC/M4A del grabador)
+            audio_data, sr = audio_detector.cargar_audio(archivo.read(), sr=16000)
 
             # Inferencia LOCAL (modelo en caché; sin API ni HF_API_TOKEN)
             max_prob_total = audio_detector.analizar_segmentos(audio_data, sr)
             gc.collect()
             dom_p, lab, ver = audio_detector.veredicto(max_prob_total)
-            analisis = Analisis(id_supabase=id_identificador, tipo='llamada', contenido=url_audio, probabilidad_ia=round(max_prob_total, 2), veredicto=ver, detalles=f"Análisis Dominante: {dom_p:.1f}% {lab}", puntos_criticos=[{"titulo": "Firma Neuronal (Local)", "score": round(dom_p, 2), "label": lab, "descripcion": f"Confianza: {dom_p:.1f}% {lab}"}]).save()
+            analisis = Analisis(id_supabase=id_identificador, tipo='llamada', contenido=(url_audio or "[SIN ALMACENAMIENTO]"), probabilidad_ia=round(max_prob_total, 2), veredicto=ver, detalles=f"Análisis Dominante: {dom_p:.1f}% {lab}", puntos_criticos=[{"titulo": "Firma Neuronal (Local)", "score": round(dom_p, 2), "label": lab, "descripcion": f"Confianza: {dom_p:.1f}% {lab}"}]).save()
 
             # NOTIFICAR ADMINS
             AnalisisService._notificar_admins(

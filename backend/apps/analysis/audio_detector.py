@@ -31,6 +31,59 @@ def cargar_pipeline():
     return _PIPE
 
 
+def _resample_compat(resampler, frame):
+    """PyAV cambió la firma de resample() entre versiones: a veces devuelve un
+    frame, a veces una lista, a veces None. Esto normaliza a lista."""
+    out = resampler.resample(frame)
+    if out is None:
+        return []
+    return out if isinstance(out, list) else [out]
+
+
+def cargar_audio(file_bytes, sr=16000):
+    """Carga audio a mono float32 a `sr` Hz.
+
+    1) Intenta soundfile (vía librosa): rápido y ya funciona para WAV/FLAC/OGG/MP3.
+    2) Si el formato no se reconoce (típico de AAC/M4A de los grabadores de llamada),
+       cae a PyAV, que trae ffmpeg incluido (no requiere instalar ffmpeg en el sistema).
+    """
+    import io as _io
+    import numpy as np
+
+    # 1) Ruta rápida: soundfile/librosa (sin cambios para lo que ya andaba)
+    try:
+        import librosa
+        return librosa.load(_io.BytesIO(file_bytes), sr=sr)
+    except Exception:
+        pass  # formato no soportado por libsndfile -> probamos PyAV
+
+    # 2) Fallback universal: PyAV (AAC, M4A, MP3, OGG, ...)
+    try:
+        import av
+    except ImportError:
+        raise Exception(
+            "Formato de audio no soportado por soundfile (¿AAC/M4A del grabador?). "
+            "Instala el decodificador universal con: pip install av"
+        )
+
+    contenedor = av.open(_io.BytesIO(file_bytes))
+    try:
+        stream = contenedor.streams.audio[0]
+        resampler = av.AudioResampler(format="flt", layout="mono", rate=sr)
+        trozos = []
+        for frame in contenedor.decode(stream):
+            for rf in _resample_compat(resampler, frame):
+                trozos.append(np.asarray(rf.to_ndarray()).reshape(-1))
+        # drenar lo que quede en el resampler
+        for rf in _resample_compat(resampler, None):
+            trozos.append(np.asarray(rf.to_ndarray()).reshape(-1))
+    finally:
+        contenedor.close()
+
+    audio = np.concatenate(trozos).astype(np.float32) if trozos else np.zeros(0, dtype=np.float32)
+    return audio, sr
+
+
 def prob_fake(salida) -> float:
     """De la salida del pipeline ([{label, score}, ...]) saca la probabilidad
     (0..1) de la clase 'fake'/sintética. Si no la encuentra, 0.0."""
