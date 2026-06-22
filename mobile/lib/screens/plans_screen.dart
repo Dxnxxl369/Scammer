@@ -103,21 +103,32 @@ class _PlansScreenState extends State<PlansScreen> {
     try {
       final response = await ApiService.post('/pagos/checkout/', {'plan': planId});
       final data = jsonDecode(response.body);
-      final url = (data['datos'] is Map) ? data['datos']['url'] : null;
-      if (response.statusCode == 200 && url != null) {
-        final abierto = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(abierto
-                ? 'Completá el pago en el navegador. Al volver, tu plan se actualiza solo.'
-                : 'No se pudo abrir la página de pago. Probá de nuevo.'),
-            duration: const Duration(seconds: 5),
-          ));
+      final datos = (data['datos'] is Map) ? data['datos'] : null;
+      if (response.statusCode == 200 && datos != null) {
+        // Modo demo / Stripe no disponible: se activó directo sin pago.
+        if (datos['activado_directo'] == true) {
+          final auth = Provider.of<AuthProvider>(context, listen: false);
+          await auth.refreshUser();
+          if (mounted) _showSuccessDialog(planId);
+          return;
         }
-      } else {
-        final msg = data['mensaje'] ?? data['error'] ?? 'No se pudo iniciar el pago';
-        throw Exception(msg);
+        // Stripe configurado: abrir la página de pago.
+        final url = datos['url'];
+        if (url != null) {
+          final abierto = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(abierto
+                  ? 'Completá el pago en el navegador. Al volver, tu plan se actualiza solo.'
+                  : 'No se pudo abrir la página de pago. Probá de nuevo.'),
+              duration: const Duration(seconds: 5),
+            ));
+          }
+          return;
+        }
       }
+      final msg = data['mensaje'] ?? data['error'] ?? 'No se pudo iniciar el pago';
+      throw Exception(msg);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

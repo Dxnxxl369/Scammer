@@ -132,3 +132,6 @@ STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 # A dónde redirige Stripe tras pagar / cancelar (cambiar por tu dominio o deep link)
 STRIPE_SUCCESS_URL = config('STRIPE_SUCCESS_URL', default='https://scammer.app/pago-exitoso')
 STRIPE_CANCEL_URL = config('STRIPE_CANCEL_URL', default='https://scammer.app/pago-cancelado')
+# Si True: al "pagar", si Stripe no está configurado o falla, igual se activa el
+# plan SIN cobro (modo demo). Poner en False en producción para exigir pago real.
+PAGOS_PERMITIR_BYPASS = config('PAGOS_PERMITIR_BYPASS', default=True, cast=bool)

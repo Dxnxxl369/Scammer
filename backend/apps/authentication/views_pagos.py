@@ -90,20 +90,20 @@ class CrearCheckoutView(APIView):
         if plan not in PLANES_PAGABLES:
             return respuesta_error('PLAN_INVALIDO', 'Plan inválido', status.HTTP_400_BAD_REQUEST)
 
-        if not settings.STRIPE_SECRET_KEY:
-            return respuesta_error('STRIPE_NO_CONFIGURADO',
-                                   'Falta configurar STRIPE_SECRET_KEY en el servidor',
-                                   status.HTTP_503_SERVICE_UNAVAILABLE)
-
         usuario = UsuarioService.obtener_por_supabase_id(request.user.id)
         if not usuario:
             return respuesta_error('NO_ENCONTRADO', 'Usuario no encontrado', status.HTTP_404_NOT_FOUND)
 
+        bypass = getattr(settings, 'PAGOS_PERMITIR_BYPASS', True)
         cfg = _config_plan(plan)
-        if cfg.precio_centavos <= 0:
-            return respuesta_error('PRECIO_NO_DEFINIDO',
-                                   'El administrador aún no definió el precio de este plan',
-                                   status.HTTP_400_BAD_REQUEST)
+
+        # Stripe no configurado o sin precio definido.
+        if not settings.STRIPE_SECRET_KEY or cfg.precio_centavos <= 0:
+            if bypass:
+                return self._activar_directo(usuario, plan, 'Stripe no disponible (modo demo)')
+            return respuesta_error('STRIPE_NO_CONFIGURADO',
+                                   'Pagos no disponibles en este momento',
+                                   status.HTTP_503_SERVICE_UNAVAILABLE)
 
         # Crear (o reutilizar) el cliente de Stripe para este usuario.
         try:
@@ -115,10 +115,7 @@ class CrearCheckoutView(APIView):
                 )
                 usuario.stripe_customer_id = cliente.id
                 usuario.save()
-        except Exception as e:
-            return respuesta_error('STRIPE_ERROR', f'No se pudo crear el cliente: {e}', status.HTTP_502_BAD_GATEWAY)
 
-        try:
             session = stripe.checkout.Session.create(
                 mode='subscription',
                 customer=usuario.stripe_customer_id,
@@ -138,6 +135,9 @@ class CrearCheckoutView(APIView):
                 subscription_data={'metadata': {'usuario_id': usuario.id_supabase, 'plan': plan}},
             )
         except Exception as e:
+            # Stripe falló: si el bypass está activo, activar igual (el usuario lo pidió).
+            if bypass:
+                return self._activar_directo(usuario, plan, f'Stripe falló: {e}')
             return respuesta_error('STRIPE_ERROR', f'No se pudo crear el checkout: {e}', status.HTTP_502_BAD_GATEWAY)
 
         try:
@@ -147,6 +147,34 @@ class CrearCheckoutView(APIView):
             pass
 
         return respuesta_exitosa({'url': session.url, 'session_id': session.id}, mensaje='Checkout creado')
+
+    def _activar_directo(self, usuario, plan, motivo=''):
+        """Activa el plan SIN cobro real (modo demo / Stripe no disponible).
+        OJO: en producción esto regala planes. Controlar con PAGOS_PERMITIR_BYPASS."""
+        usuario.plan = plan
+        usuario.intentos_pesados = 0
+        usuario.intentos_livianos = 0
+        usuario.save()
+        try:
+            Pago(id_supabase=usuario.id_supabase, plan=plan, monto_centavos=0,
+                 stripe_session_id='BYPASS', estado='completado').save()
+        except Exception:
+            pass
+        try:
+            from apps.analysis.services import BitacoraService
+            BitacoraService.registrar(
+                usuario_id=usuario.id_supabase,
+                accion=f'Plan activado sin cobro · {plan.upper()}',
+                modulo='Pagos',
+                ip='bypass',
+                detalles=motivo,
+            )
+        except Exception:
+            pass
+        return respuesta_exitosa(
+            {'activado_directo': True, 'plan': plan},
+            mensaje=f'Plan {plan.upper()} activado'
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
