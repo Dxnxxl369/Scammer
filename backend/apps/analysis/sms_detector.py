@@ -1,19 +1,15 @@
 """
-Detector de smishing (SMS fraudulento).
+Detector de SMS generados por IA.
 
-Para SMS la pregunta útil no es "¿lo escribió una IA?" (los detectores de texto
-fallan en mensajes cortos) sino "¿es un fraude?". Combina dos grupos de señales:
+El proyecto detecta contenido GENERADO POR IA (no fraude). Un SMS es texto, así
+que se evalúa con el mismo motor que el análisis de texto (Sapling aidetect), que
+devuelve una probabilidad de que el mensaje haya sido escrito por una IA.
 
-  1. El ENLACE: acortadores que ocultan el destino, dominios con IP, homógrafos
-     (xn--), TLDs poco comunes, falta de HTTPS y suplantación de marca.
-  2. El CONTENIDO/intención: urgencia/amenaza, pedido de datos sensibles
-     (clave/OTP/tarjeta), ganchos de premio y llamados a hacer clic.
+Nota: en mensajes muy cortos la detección de texto-IA es poco fiable, por eso los
+mensajes por debajo de MIN_CHARS se marcan como "insuficientes" y no se evalúan.
 
-Devuelve un puntaje de riesgo 0-100, un veredicto y las BANDERAS concretas que
-disparó (no un binario). Multilingüe (es/en) con términos de contexto boliviano.
-
-Opcional: si se configura SMS_SAFE_BROWSING_KEY (Google Safe Browsing) se
-consulta la reputación de las URLs; si no, se usa solo la heurística.
+(Las funciones y listas de heurística de fraude más abajo quedaron SIN USO al
+cambiar el enfoque a IA; se conservan por si se quisieran reutilizar.)
 """
 import re
 from typing import Optional
@@ -156,34 +152,44 @@ def _reputacion_urls(urls: list) -> Optional[dict]:
     return None
 
 
+def _detectar_ia(texto: str) -> tuple:
+    """Detecta si el texto fue generado por IA usando Sapling (el MISMO motor que
+    usa el análisis de texto). Devuelve (probabilidad_ia 0-100, veredicto, detalles)."""
+    import requests
+    sapling_key = config('SAPLING_API_KEY', default='')
+    if not sapling_key:
+        raise Exception('ERROR_MOTOR_TEXTO')
+    try:
+        with requests.post(
+            'https://api.sapling.ai/api/v1/aidetect',
+            json={'key': sapling_key, 'text': texto},
+            headers={'Content-Type': 'application/json'},
+            timeout=20,
+        ) as r:
+            if r.status_code != 200:
+                print(f'[SMS/SAPLING ERROR] {r.status_code}: {r.text}')
+                raise Exception('ERROR_MOTOR_TEXTO')
+            prob = round(r.json().get('score', 0) * 100, 2)
+    except Exception as e:
+        print(f'[SMS/SAPLING] {e}')
+        raise Exception('ERROR_MOTOR_TEXTO')
+    veredicto = 'SÍNTESIS DETECTADA' if prob > 50 else 'ORIGEN NATURAL'
+    return prob, veredicto, f'Confianza IA: {prob:.2f}% (Sapling Engine)'
+
+
 def detectar(texto: str, remitente: Optional[str] = None) -> dict:
+    """Detecta si el SMS fue GENERADO POR IA (no fraude). Mensajes muy cortos no se
+    evalúan, porque los detectores de texto-IA son poco fiables ahí."""
     texto = (texto or '').strip()
     if len(texto) < MIN_CHARS:
         return {
             'estado': ESTADO_INSUFICIENTE, 'probabilidad_ia': 0.0, 'veredicto': 'MENSAJE INSUFICIENTE',
-            'detalles': 'El mensaje es demasiado corto para evaluar.', 'banderas': [],
+            'detalles': 'El mensaje es demasiado corto para evaluar de forma fiable.', 'banderas': [],
         }
-    puntaje, banderas = _evaluar(texto, remitente)
-    rep = _reputacion_urls(extraer_urls(texto))
-    if rep:
-        puntaje = min(100, puntaje + rep['puntos'])
-        banderas.append(rep['bandera'])
-
-    if puntaje >= 60:
-        veredicto = 'FRAUDE PROBABLE'
-    elif puntaje >= 30:
-        veredicto = 'SOSPECHOSO'
-    else:
-        veredicto = 'PROBABLEMENTE LEGÍTIMO'
-
-    if banderas:
-        detalle = 'Señales detectadas: ' + '; '.join(banderas) + '.'
-    else:
-        detalle = 'No se detectaron señales claras de fraude, pero mantené precaución con enlaces y datos.'
-
+    prob, veredicto, detalles = _detectar_ia(texto)
     return {
-        'estado': ESTADO_OK, 'probabilidad_ia': float(puntaje), 'veredicto': veredicto,
-        'detalles': detalle, 'banderas': banderas,
+        'estado': ESTADO_OK, 'probabilidad_ia': prob, 'veredicto': veredicto,
+        'detalles': detalles, 'banderas': [],
     }
 
 
@@ -200,7 +206,7 @@ def analizar_sms(identificador: str, texto: str, remitente: Optional[str] = None
 
     res = detectar(texto, remitente)
     estado = res['estado']
-    puntos = [{'titulo': 'Señal de fraude', 'descripcion': b} for b in res.get('banderas', [])]
+    puntos = [{'titulo': 'Score Neuronal', 'descripcion': f"{res['probabilidad_ia']:.2f}%"}] if estado == ESTADO_OK else []
 
     payload = {
         'tipo': 'sms',
@@ -229,9 +235,8 @@ def analizar_sms(identificador: str, texto: str, remitente: Optional[str] = None
             payload['id'] = str(analisis.id)
             payload['fecha'] = analisis.fecha_creacion.isoformat()
             prob = res['probabilidad_ia']
-            if prob >= 60 or prob <= 20:
-                DatoEntrenamiento(contenido=texto[:1000], etiqueta=1 if prob >= 60 else 0,
-                                  confianza_original=prob).save()
+            DatoEntrenamiento(contenido=texto[:1000], etiqueta=1 if prob > 50 else 0,
+                              confianza_original=prob).save()
         except Exception as e:
             print(f'[SMS DETECTOR] Error al persistir: {e}')
         try:
@@ -241,7 +246,7 @@ def analizar_sms(identificador: str, texto: str, remitente: Optional[str] = None
         try:
             AnalisisService._notificar_admins(
                 titulo='Nuevo Análisis: SMS',
-                mensaje=f"Veredicto: {res['veredicto']} ({res['probabilidad_ia']:.0f}% riesgo).",
+                mensaje=f"Veredicto: {res['veredicto']} ({res['probabilidad_ia']:.0f}% IA).",
                 tipo='analisis_liviano', analisis_id=payload.get('id'),
             )
         except Exception as e:
