@@ -154,15 +154,18 @@ class AnalisisService:
                 UsuarioService.incrementar_intentos_livianos(id_identificador)
             return True, 'OK'
 
-        anonimo = Anonimo.objects(id_sesion=id_identificador).first()
-        if anonimo:
-            if es_pesado:
-                if anonimo.intentos_pesados >= 3: return False, 'LIMITE_ALCANZADO'
-                AnonimoService.incrementar_intentos_pesados(id_identificador)
-            else:
-                if anonimo.intentos_livianos >= 4: return False, 'LIMITE_ALCANZADO'
-                AnonimoService.incrementar_intentos_livianos(id_identificador)
-            return True, 'OK'
+        # --- RAMA ANÓNIMA DESACTIVADA (ya no hay invitados; todos autenticados) ---
+        # Se conserva comentada por si se reactiva. Sin usuario autenticado se
+        # devuelve IDENTIFICADOR_INVALIDO (efectivamente exige login).
+        # anonimo = Anonimo.objects(id_sesion=id_identificador).first()
+        # if anonimo:
+        #     if es_pesado:
+        #         if anonimo.intentos_pesados >= 3: return False, 'LIMITE_ALCANZADO'
+        #         AnonimoService.incrementar_intentos_pesados(id_identificador)
+        #     else:
+        #         if anonimo.intentos_livianos >= 4: return False, 'LIMITE_ALCANZADO'
+        #         AnonimoService.incrementar_intentos_livianos(id_identificador)
+        #     return True, 'OK'
         return False, 'IDENTIFICADOR_INVALIDO'
 
     @staticmethod

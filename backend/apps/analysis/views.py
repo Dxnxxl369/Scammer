@@ -22,13 +22,18 @@ class AnalisisBaseView(APIView):
             print(f"[DEBUG VIEWS] Usuario por middleware detectado: {request.user.id}")
             return request.user.id
             
-        # 3. Fallback: Sesión Anónima
-        session_id = request.headers.get('X-Session-Id')
-        if not session_id and request.COOKIES:
-            session_id = request.COOKIES.get('id_sesion_anonimo')
-            
-        print(f"[DEBUG VIEWS] Fallback a Sesión Anónima: {session_id}")
-        return session_id
+        # 3. Fallback: Sesión Anónima  --- DESACTIVADO (ya no hay anónimos) ---
+        # Se conserva comentado por si se reactiva. Como el frontend siempre manda
+        # X-User-ID de un usuario autenticado, esta rama ya no se alcanza.
+        # session_id = request.headers.get('X-Session-Id')
+        # if not session_id and request.COOKIES:
+        #     session_id = request.COOKIES.get('id_sesion_anonimo')
+        # print(f"[DEBUG VIEWS] Fallback a Sesión Anónima: {session_id}")
+        # return session_id
+
+        # Sin identidad autenticada -> sin identificador (se requiere login).
+        print("[DEBUG VIEWS] Sin identidad autenticada (anónimo desactivado).")
+        return None
 
     def obtener_ip(self, request):
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')

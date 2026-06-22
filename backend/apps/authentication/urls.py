@@ -7,9 +7,10 @@ from .views import (
     GoogleLoginUrlView,
     IniciarSesionSessionView,
     SuscripcionView,
-    CrearSesionAnonimaView,
-    SesionAnonimaView,
-    IncrementarIntentosAnonimoView,
+    # --- VISTAS ANÓNIMAS DESACTIVADAS (ya no hay invitados) ---
+    # CrearSesionAnonimaView,
+    # SesionAnonimaView,
+    # IncrementarIntentosAnonimoView,
     LogoutView,
     RegistrarFCMTokenView,
 )
@@ -40,9 +41,10 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/suscripcion/', SuscripcionView.as_view(), name='suscripcion'),
     path('auth/fcm/', RegistrarFCMTokenView.as_view(), name='registrar_fcm'),
-    path('anonimos/sesion/', CrearSesionAnonimaView.as_view(), name='crear_sesion_anonima'),
-    path('anonimos/sesion/<str:id_sesion>/', SesionAnonimaView.as_view(), name='sesion_anonima'),
-    path('anonimos/sesion/<str:id_sesion>/intento/', IncrementarIntentosAnonimoView.as_view(), name='incrementar_intentos_anonimo'),
+    # --- RUTAS ANÓNIMAS DESACTIVADAS (ya no hay invitados, todos autenticados) ---
+    # path('anonimos/sesion/', CrearSesionAnonimaView.as_view(), name='crear_sesion_anonima'),
+    # path('anonimos/sesion/<str:id_sesion>/', SesionAnonimaView.as_view(), name='sesion_anonima'),
+    # path('anonimos/sesion/<str:id_sesion>/intento/', IncrementarIntentosAnonimoView.as_view(), name='incrementar_intentos_anonimo'),
     path('admin/usuarios/', ListarUsuariosView.as_view(), name='admin_listar_usuarios'),
     path('admin/usuarios/<str:id_supabase>/', DetalleUsuarioView.as_view(), name='admin_detalle_usuario'),
     path('admin/usuarios/<str:id_supabase>/bloquear/', BloquearUsuarioView.as_view(), name='admin_bloquear'),
