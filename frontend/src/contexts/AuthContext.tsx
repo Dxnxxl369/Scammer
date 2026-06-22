@@ -125,14 +125,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setCargando(false)
             setInicializado(true)
           })
-    }
 
-    const arranque = async () => {
-        const { data: { session } } = await supabase.auth.getSession()
-        await sincronizar(session)
+        // Red de seguridad: si por lo que sea la carga no resuelve (backend lento,
+        // etc.), soltamos el gate igual a los 8s para no quedar en bucle en
+        // "Sincronizando Terminal". Setear flags ya seteados es inofensivo.
+        setTimeout(() => { setCargando(false); setInicializado(true) }, 8000)
+    } else {
+        // Sin identidad simple (deslogueado): dependemos de la sesión de Supabase.
+        const arranque = async () => {
+            const { data: { session } } = await supabase.auth.getSession()
+            await sincronizar(session)
+        }
+        arranque()
     }
-    arranque()
-
     // 2. Escuchar cambios de estado (Mantenemos Supabase para el Login/Logout real)
     const { data: subscription } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`[AUTH] Evento: ${event}`)

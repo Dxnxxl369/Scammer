@@ -108,15 +108,21 @@ export const authService = {
     // Aceptamos identidad simple (header X-User-ID) aunque no haya sesión de Supabase.
     const port = window.location.port || '80'
     const storedUserId = localStorage.getItem(`scammer-user-id-${port}`)
-    let session = null
-    try {
-      const res = await supabase.auth.getSession()
-      session = res.data.session
-    } catch {
-      session = null
+
+    // IMPORTANTE: si hay identidad simple (X-User-ID) NO llamamos a
+    // supabase.auth.getSession(). Un getSession lento o colgado (token expirado +
+    // proyecto Supabase inalcanzable) congelaba el arranque y dejaba el spinner
+    // "Sincronizando Terminal" en bucle. Con id guardado vamos directo a /auth/yo/.
+    if (!storedUserId) {
+      let session = null
+      try {
+        session = (await supabase.auth.getSession()).data.session
+      } catch {
+        session = null
+      }
+      // Sin sesión de Supabase NI id guardado => no hay a quién consultar.
+      if (!session) return null
     }
-    // Sin sesión de Supabase NI id guardado => no hay a quién consultar.
-    if (!session && !storedUserId) return null
 
     try {
       const response = await api.get<RespuestaApi<Usuario>>('/auth/yo/')
