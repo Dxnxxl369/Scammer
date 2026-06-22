@@ -61,14 +61,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(`scammer-user-name-${port}`, usuarioData.nombre_usuario)
           
           document.cookie = 'id_sesion_anonimo=; Max-Age=0; path=/;'
-        } else if (!session?.user) {
-          console.warn("[AUTH-DEBUG] ID no válido en Backend. Revirtiendo a Anónimo.");
+        } else if (!session?.user && !storedUserId) {
+          // Solo revertimos a anónimo si NO hay ninguna identidad guardada.
+          // Si hay un ID guardado pero /auth/yo/ falló (error transitorio del
+          // backend, red, etc.), NO borramos la sesión: mantenemos al usuario
+          // logueado para que un F5 no lo eche.
+          console.warn("[AUTH-DEBUG] Sin identidad. Cargando modo invitado.");
           localStorage.removeItem(`scammer-user-id-${port}`)
           localStorage.removeItem(`scammer-user-role-${port}`)
           localStorage.removeItem(`scammer-user-name-${port}`)
           const anonimoData = await anonimoService.asegurarSesion()
           setAnonimo(anonimoData)
           setUsuario(null)
+        } else {
+          console.warn("[AUTH-DEBUG] /auth/yo/ no respondió perfil pero hay ID guardado: mantengo la sesión.");
         }
       } else {
         console.log("[AUTH-DEBUG] No hay sesión detectada. Cargando modo invitado.");
