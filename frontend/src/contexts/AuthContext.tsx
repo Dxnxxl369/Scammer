@@ -103,25 +103,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (idPersistente) {
         console.log(`[AUTH-DEBUG] Arranque en Caliente. ID: ${idPersistente}, Rol: ${rolPersistente}`);
-        // Simulamos un usuario mínimo para que las rutas no reboten antes de la sincronización
-        setUsuario({ id_supabase: idPersistente, rol: rolPersistente || 'usuario' } as any);
-        setCargando(false)
-        setInicializado(true)
-
-        // Carga del perfil COMPLETO de inmediato, sin depender del guard de
-        // sincronizar (que en StrictMode/carreras puede bloquearse y dejar el
-        // usuario parcial -> "VISITANTE_TEMPORAL"). Es async, así que gana sobre
-        // el set parcial de arriba (que es síncrono). Solo upgrade, nunca a null.
+        // YA NO seteamos un usuario PARCIAL (eso causaba "VISITANTE_TEMPORAL" al
+        // recargar: un objeto con id+rol pero sin plan). Mientras carga el perfil
+        // COMPLETO mantenemos el spinner (cargando=true / inicializado=false) y la
+        // ruta protegida muestra "Autenticando Canal...". Así `usuario` solo puede
+        // ser null (cargando) o COMPLETO — nunca parcial/temporal.
         authService.obtenerSesionActual()
           .then(u => {
-            console.log('[AUTH-DEBUG] Carga directa de perfil:', u ? `OK ${u.nombre_usuario} (plan=${u.plan})` : 'NULL (revisar /auth/yo/)')
+            console.log('[AUTH-DEBUG] Carga directa de perfil:', u ? `OK ${u.nombre_usuario} (plan=${u.plan})` : 'NULL (id inválido o /auth/yo/ sin perfil)')
             if (u) {
               setUsuario(u)
               localStorage.setItem(`scammer-user-role-${port}`, u.rol)
               localStorage.setItem(`scammer-user-name-${port}`, u.nombre_usuario)
+            } else {
+              // Sin perfil válido: tratamos como sin sesión (la ruta manda a /login).
+              setUsuario(null)
             }
           })
           .catch(e => console.error('[AUTH-DEBUG] Carga directa de perfil falló:', e))
+          .finally(() => {
+            setCargando(false)
+            setInicializado(true)
+          })
     }
 
     const arranque = async () => {

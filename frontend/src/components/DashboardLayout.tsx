@@ -95,7 +95,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <div className={`flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-full ${usuario?.rol === 'administrador' ? 'border-cyan-500/20' : ''}`}>
               <ShieldCheck size={16} className={usuario?.rol === 'administrador' ? 'text-cyan-400' : 'text-[#ff0055]'} />
               <span className={`text-[10px] font-black italic uppercase tracking-widest ${usuario?.rol === 'administrador' ? 'text-cyan-400' : 'text-[var(--text-main)]'}`}>
-                {usuario?.rol === 'administrador' ? 'ADMIN_ROOT' : (usuario?.plan || 'VISITANTE_TEMPORAL')}
+                {usuario?.rol === 'administrador' ? 'ADMIN_ROOT' : (usuario?.plan || 'GRATIS')}
               </span>
             </div>
           </div>
@@ -180,9 +180,9 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-black text-[var(--text-main)] tracking-tight uppercase leading-none mb-1">{usuario ? usuario.nombre_usuario : 'Invitado_Sujeto'}</p>
+                <p className="text-sm font-black text-[var(--text-main)] tracking-tight uppercase leading-none mb-1">{usuario ? usuario.nombre_usuario : ''}</p>
                 <div className="flex items-center gap-2 justify-end">
-                  <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest italic">{usuario ? usuario.correo : 'Sesión_No_Enlazada'}</span>
+                  <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest italic">{usuario ? usuario.correo : ''}</span>
                   <div className={`w-1.5 h-1.5 rounded-full ${usuario ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-white/20 animate-pulse'}`}></div>
                 </div>
               </div>

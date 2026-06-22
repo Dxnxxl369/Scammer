@@ -101,7 +101,7 @@ export function AnalysisCenter() {
     const v = (a / (b || 1)) * 100
     return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0
   }
-  const planActual = usuario?.plan || (usuario ? 'gratis' : 'visitante')
+  const planActual = usuario?.plan || 'gratis'
 
   const getFileType = (file: File | null): 'imagen' | 'video' | 'audio' | 'documento' | 'codigo' | 'otro' => {
     if (!file) return 'otro'
