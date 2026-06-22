@@ -11,6 +11,8 @@ export interface Usuario {
   bloqueado: boolean
   intentos_livianos: number
   intentos_pesados: number
+  limites?: { livianos: number; pesados: number }
+  restantes?: { livianos: number; pesados: number }
   fecha_creacion: string
 }
 

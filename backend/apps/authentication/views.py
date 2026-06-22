@@ -166,7 +166,20 @@ class YoView(APIView):
         if not usuario.ultima_conexion or usuario.ultima_conexion < ahora - timedelta(seconds=60):
             usuario.update(set__ultima_conexion=ahora)
 
-        return respuesta_exitosa(usuario.to_dict())
+        # Agregar límites del plan y cuántos intentos le quedan al usuario.
+        datos = usuario.to_dict()
+        try:
+            from apps.analysis.services import AnalisisService
+            limites = AnalisisService._limites_plan(usuario.plan or 'gratis')
+            datos['limites'] = limites
+            datos['restantes'] = {
+                'livianos': max(0, limites['livianos'] - (usuario.intentos_livianos or 0)),
+                'pesados': max(0, limites['pesados'] - (usuario.intentos_pesados or 0)),
+            }
+        except Exception:
+            pass
+
+        return respuesta_exitosa(datos)
 
     def patch(self, request):
         serializer = ActualizarUsuarioSerializer(data=request.data, partial=True)
