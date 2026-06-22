@@ -13,6 +13,7 @@ export function Planes() {
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'elite' | null>(null)
   const [procesando, setProcesando] = useState(false)
   const [exito, setExito] = useState(false)
+  const [cancelando, setCancelando] = useState(false)
 
   const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvv: '' })
   const [cardBrand, setCardBrand] = useState<'visa' | 'mastercard' | 'unknown'>('unknown')
@@ -96,6 +97,26 @@ export function Planes() {
       console.error("Error en pago:", error)
       alert("Error al procesar la acreditación. Verifique su conexión y vuelva a intentarlo.")
       setProcesando(false)
+    }
+  }
+
+  const cancelarSuscripcion = async () => {
+    if (!usuario || usuario.plan === 'gratis') return
+    if (!window.confirm(`¿Cancelar tu suscripción ${(usuario.plan || '').toUpperCase()} y volver al plan GRATIS? El cambio es inmediato.`)) return
+    setCancelando(true)
+    try {
+      const res = await api.post('/pagos/cancelar/')
+      if (res.data?.exito) {
+        await recargarUsuario()
+        alert('Suscripción cancelada. Volviste al plan GRATIS.')
+      } else {
+        throw new Error('Respuesta fallida del servidor')
+      }
+    } catch (error) {
+      console.error('Error al cancelar suscripción:', error)
+      alert('No se pudo cancelar la suscripción. Intentá de nuevo.')
+    } finally {
+      setCancelando(false)
     }
   }
 
@@ -235,6 +256,19 @@ export function Planes() {
           </div>
 
         </div>
+
+        {usuario && usuario.plan !== 'gratis' && (
+          <div className="mt-16 flex flex-col items-center gap-3">
+            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30">Plan activo: <span className="text-white/60">{usuario.plan}</span></p>
+            <button
+              onClick={cancelarSuscripcion}
+              disabled={cancelando}
+              className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-500/70 hover:text-rose-500 border border-rose-500/30 hover:border-rose-500/60 rounded-full px-8 py-4 transition-all disabled:opacity-40"
+            >
+              {cancelando ? 'Cancelando…' : 'Cancelar suscripción y volver a Gratis'}
+            </button>
+          </div>
+        )}
 
         <section className="mt-20 p-10 bg-white/5 rounded-[40px] border border-white/5">
             <h4 className="text-xs font-black uppercase tracking-[0.3em] mb-6 text-center opacity-50">Lógica de Purga Forense</h4>

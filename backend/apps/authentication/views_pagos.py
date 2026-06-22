@@ -289,18 +289,52 @@ class StripeWebhookView(APIView):
 
 
 class CancelarSuscripcionView(APIView):
-    """Cancela la suscripción al final del período (el usuario mantiene el plan hasta entonces)."""
+    """Cancela la suscripción y devuelve al usuario al plan GRATIS de inmediato.
+    Si tenía suscripción de Stripe, también la cancela allí (best-effort)."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         usuario = UsuarioService.obtener_por_supabase_id(request.user.id)
-        if not usuario or not usuario.stripe_subscription_id:
-            return respuesta_error('SIN_SUSCRIPCION', 'No tenés una suscripción activa', status.HTTP_400_BAD_REQUEST)
+        if not usuario:
+            return respuesta_error('NO_ENCONTRADO', 'Usuario no encontrado', status.HTTP_404_NOT_FOUND)
+        if usuario.plan == 'gratis':
+            return respuesta_error('YA_GRATIS', 'Ya estás en el plan gratis', status.HTTP_400_BAD_REQUEST)
+
+        plan_anterior = usuario.plan
+
+        # Si tenía suscripción real de Stripe, la cancelamos allá. No rompemos si
+        # falla (en el flujo demo de la web no hay suscripción de Stripe).
+        if usuario.stripe_subscription_id:
+            try:
+                stripe.Subscription.cancel(usuario.stripe_subscription_id)
+            except Exception as e:
+                print(f'[PAGOS] No se pudo cancelar el sub de Stripe (se ignora): {e}')
+
+        # Volvemos a GRATIS y reseteamos los contadores de uso.
+        usuario.plan = 'gratis'
+        usuario.intentos_livianos = 0
+        usuario.intentos_pesados = 0
+        usuario.stripe_subscription_id = None
+        usuario.save()
+
+        # Bitácora + aviso a administradores (best-effort).
         try:
-            stripe.Subscription.modify(usuario.stripe_subscription_id, cancel_at_period_end=True)
+            from apps.analysis.services import BitacoraService, NotificacionService
+            BitacoraService.registrar(
+                usuario_id=usuario.id_supabase,
+                accion='Cancelación de suscripción',
+                modulo='Pagos',
+                ip=request.META.get('REMOTE_ADDR'),
+                detalles=f'Usuario canceló {plan_anterior.upper()} y volvió a GRATIS'
+            )
+            for admin in Usuario.objects(rol='administrador'):
+                NotificacionService.crear(
+                    u_id=admin.id_supabase,
+                    t='Cancelación de Suscripción',
+                    m=f'El agente {usuario.nombre_usuario} canceló {plan_anterior.upper()} y volvió a GRATIS.',
+                    tp='pago'
+                )
         except Exception as e:
-            return respuesta_error('STRIPE_ERROR', f'No se pudo cancelar: {e}', status.HTTP_502_BAD_GATEWAY)
-        return respuesta_exitosa(
-            {'cancelada': True},
-            mensaje='Suscripción cancelada. Mantenés el plan hasta el fin del período pagado.'
-        )
+            print(f'[PAGOS] No se pudo registrar bitácora/notificación (se ignora): {e}')
+
+        return respuesta_exitosa(usuario.to_dict(), mensaje='Suscripción cancelada. Volviste al plan gratis.')
