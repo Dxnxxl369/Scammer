@@ -125,12 +125,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         await sincronizar(session)
       } else if (event === 'SIGNED_OUT') {
-        localStorage.removeItem(`scammer-user-id-${port}`)
-        setUsuario(null)
-        const anonimoData = await anonimoService.asegurarSesion()
-        setAnonimo(anonimoData)
-        setCargando(false)
-        setInicializado(true)
+        // OJO: Supabase emite SIGNED_OUT no solo por logout intencional, tambien
+        // cuando el access token expira y el refresh falla. La identidad real de
+        // la app es X-User-ID (en localStorage, independiente del token de
+        // Supabase) y el backend la acepta -> NO debemos cerrar sesion aqui,
+        // porque eso echaba al usuario al recargar (F5) volviendolo anonimo.
+        // El logout de verdad lo maneja cerrarSesion() (limpia todo + redirige);
+        // ese caso ya se filtra arriba con `if (estaCerrandoSesion) return`.
+        const sigueElId = localStorage.getItem(`scammer-user-id-${port}`)
+        if (sigueElId) {
+          console.warn('[AUTH] SIGNED_OUT de Supabase ignorado: la identidad simple (X-User-ID) sigue activa.')
+        } else {
+          // No hay identidad simple: ahi si caemos a invitado.
+          setUsuario(null)
+          const anonimoData = await anonimoService.asegurarSesion()
+          setAnonimo(anonimoData)
+          setCargando(false)
+          setInicializado(true)
+        }
       }
     })
 

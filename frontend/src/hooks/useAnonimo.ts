@@ -12,6 +12,15 @@ export function useAnonimo() {
   const [cargando, setCargando] = useState(true)
 
   const recargar = useCallback(async () => {
+    // Si ya hay identidad de usuario (login persistido en localStorage), NO
+    // creamos/consultamos sesion anonima: un usuario logueado no debe generar
+    // ni usar sesion de invitado (eso disparaba el modo anonimo al recargar).
+    const port = window.location.port || '80'
+    if (localStorage.getItem(`scammer-user-id-${port}`)) {
+      setAnonimo(null)
+      setCargando(false)
+      return
+    }
     setCargando(true)
     const sesion = await anonimoService.asegurarSesion()
     setAnonimo(sesion)

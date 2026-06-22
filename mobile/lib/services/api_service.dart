@@ -11,7 +11,7 @@ class ApiService {
   // serviría al isolate de fondo de SMS; por eso la URL vive aquí en código.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.199.97:8002/api',
+    defaultValue: 'http://192.168.207.97:8002/api',
   );
 
   static Future<Map<String, String>> getHeaders() async {

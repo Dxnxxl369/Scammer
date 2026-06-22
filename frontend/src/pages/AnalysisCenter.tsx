@@ -64,7 +64,9 @@ export function AnalysisCenter() {
   if (usuario?.rol === 'administrador') return <Navigate to="/admin" replace />
 
   const getTries = () => {
-    if (usuario && usuario.plan) {
+    // Cualquier usuario logueado (aunque el `plan` aún no haya llegado en el
+    // arranque en caliente) usa límites de usuario, NUNCA los de invitado.
+    if (usuario) {
       // Preferir los valores reales que manda el backend (límites del admin).
       if (usuario.limites && usuario.restantes) {
         return {
