@@ -104,6 +104,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUsuario({ id_supabase: idPersistente, rol: rolPersistente || 'usuario' } as any);
         setCargando(false)
         setInicializado(true)
+
+        // Carga del perfil COMPLETO de inmediato, sin depender del guard de
+        // sincronizar (que en StrictMode/carreras puede bloquearse y dejar el
+        // usuario parcial -> "VISITANTE_TEMPORAL"). Es async, así que gana sobre
+        // el set parcial de arriba (que es síncrono). Solo upgrade, nunca a null.
+        authService.obtenerSesionActual()
+          .then(u => {
+            console.log('[AUTH-DEBUG] Carga directa de perfil:', u ? `OK ${u.nombre_usuario} (plan=${u.plan})` : 'NULL (revisar /auth/yo/)')
+            if (u) {
+              setUsuario(u)
+              localStorage.setItem(`scammer-user-role-${port}`, u.rol)
+              localStorage.setItem(`scammer-user-name-${port}`, u.nombre_usuario)
+            }
+          })
+          .catch(e => console.error('[AUTH-DEBUG] Carga directa de perfil falló:', e))
     }
 
     const arranque = async () => {
