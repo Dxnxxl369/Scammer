@@ -1,43 +1,33 @@
-import { useEffect, useState, useCallback } from 'react'
-import { anonimoService } from '../services/anonimoService'
+import { useState, useCallback } from 'react'
 import type { Anonimo } from '../types/auth'
 
-const LIMITES = {
-  livianos: 4,
-  pesados: 3,
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// LÓGICA DE INVITADOS / ANÓNIMOS — DESACTIVADA
+// Ya NO hay anónimos: todos los usuarios deben estar autenticados.
+// El hook se conserva como stub inerte (siempre 0 / null) para no romper los
+// componentes que todavía lo importan (AnalysisCenter, Home, Prueba, etc.).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// const LIMITES = { livianos: 4, pesados: 3 }
 
 export function useAnonimo() {
-  const [anonimo, setAnonimo] = useState<Anonimo | null>(null)
-  const [cargando, setCargando] = useState(true)
+  const [anonimo] = useState<Anonimo | null>(null)
+  const [cargando] = useState(false)
 
+  // No-op: ya no se crean/consultan sesiones de invitado.
   const recargar = useCallback(async () => {
-    // Si ya hay identidad de usuario (login persistido en localStorage), NO
-    // creamos/consultamos sesion anonima: un usuario logueado no debe generar
-    // ni usar sesion de invitado (eso disparaba el modo anonimo al recargar).
+    /*
     const port = window.location.port || '80'
-    if (localStorage.getItem(`scammer-user-id-${port}`)) {
-      setAnonimo(null)
-      setCargando(false)
-      return
-    }
+    if (localStorage.getItem(`scammer-user-id-${port}`)) { setAnonimo(null); setCargando(false); return }
     setCargando(true)
     const sesion = await anonimoService.asegurarSesion()
     setAnonimo(sesion)
     setCargando(false)
+    */
   }, [])
 
-  useEffect(() => {
-    recargar()
-  }, [recargar])
-
-  const restantesLivianos = anonimo
-    ? Math.max(0, LIMITES.livianos - (anonimo.intentos_livianos || 0))
-    : 0
-
-  const restantesPesados = anonimo
-    ? Math.max(0, LIMITES.pesados - (anonimo.intentos_pesados || 0))
-    : 0
+  const restantesLivianos = 0
+  const restantesPesados = 0
 
   return {
     anonimo,

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef, useCallback } f
 import type { ReactNode } from 'react'
 import { supabase } from '../utils/supabase'
 import { authService } from '../services/authService'
-import { anonimoService } from '../services/anonimoService'
+// import { anonimoService } from '../services/anonimoService' // ANÓNIMO DESACTIVADO
 import type { Usuario, Anonimo, DatosRegistro, DatosLogin, ResultadoAuth } from '../types/auth'
 
 interface AuthContextType {
@@ -62,24 +62,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           document.cookie = 'id_sesion_anonimo=; Max-Age=0; path=/;'
         } else if (!session?.user && !storedUserId) {
-          // Solo revertimos a anónimo si NO hay ninguna identidad guardada.
-          // Si hay un ID guardado pero /auth/yo/ falló (error transitorio del
-          // backend, red, etc.), NO borramos la sesión: mantenemos al usuario
-          // logueado para que un F5 no lo eche.
-          console.warn("[AUTH-DEBUG] Sin identidad. Cargando modo invitado.");
+          // Sin identidad guardada. ANTES se creaba sesión anónima; ahora NO:
+          // todos deben autenticarse, así que dejamos el usuario en null y las
+          // rutas protegidas lo mandan a /login.
+          console.warn("[AUTH-DEBUG] Sin identidad. Requiere autenticación.");
           localStorage.removeItem(`scammer-user-id-${port}`)
           localStorage.removeItem(`scammer-user-role-${port}`)
           localStorage.removeItem(`scammer-user-name-${port}`)
-          const anonimoData = await anonimoService.asegurarSesion()
-          setAnonimo(anonimoData)
+          // --- ANÓNIMO DESACTIVADO ---
+          // const anonimoData = await anonimoService.asegurarSesion()
+          // setAnonimo(anonimoData)
+          setAnonimo(null)
           setUsuario(null)
         } else {
           console.warn("[AUTH-DEBUG] /auth/yo/ no respondió perfil pero hay ID guardado: mantengo la sesión.");
         }
       } else {
-        console.log("[AUTH-DEBUG] No hay sesión detectada. Cargando modo invitado.");
-        const anonimoData = await anonimoService.asegurarSesion()
-        setAnonimo(anonimoData)
+        console.log("[AUTH-DEBUG] No hay sesión. Requiere autenticación.");
+        // --- ANÓNIMO DESACTIVADO ---
+        // const anonimoData = await anonimoService.asegurarSesion()
+        // setAnonimo(anonimoData)
+        setAnonimo(null)
         setUsuario(null)
       }
     } catch (e) {
@@ -151,10 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (sigueElId) {
           console.warn('[AUTH] SIGNED_OUT de Supabase ignorado: la identidad simple (X-User-ID) sigue activa.')
         } else {
-          // No hay identidad simple: ahi si caemos a invitado.
+          // No hay identidad simple. ANTES caía a invitado; ahora requiere login.
           setUsuario(null)
-          const anonimoData = await anonimoService.asegurarSesion()
-          setAnonimo(anonimoData)
+          // --- ANÓNIMO DESACTIVADO ---
+          // const anonimoData = await anonimoService.asegurarSesion()
+          // setAnonimo(anonimoData)
+          setAnonimo(null)
           setCargando(false)
           setInicializado(true)
         }

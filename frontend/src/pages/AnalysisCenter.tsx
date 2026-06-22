@@ -45,7 +45,7 @@ type TabType = 'INTELIGENCIA' | 'ARCHIVOS' | 'IMAGEN' | 'VIDEO' | 'AUDIO' | 'RED
 export function AnalysisCenter() {
   const { usuario } = useAuth()
   const { theme } = useTheme()
-  const { anonimo, restantesLivianos, restantesPesados, recargar: recargarAnonimo } = useAnonimo()
+  const { restantesLivianos, restantesPesados, recargar: recargarAnonimo } = useAnonimo()
   
   const [cargando, setCargando] = useState(false)
   const [mensajeCarga, setMensajeCarga] = useState('')

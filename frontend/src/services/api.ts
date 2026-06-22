@@ -15,13 +15,14 @@ api.interceptors.request.use(async (config) => {
   
   if (userId) {
     config.headers['X-User-ID'] = userId
-  } else {
-    // Soporte para sesión anónima si no hay usuario real
-    const match = document.cookie.match(new RegExp('id_sesion_anonimo=([^;]+)'))
-    if (match) {
-      config.headers['X-Session-Id'] = match[1]
-    }
   }
+  // --- SESIÓN ANÓNIMA DESACTIVADA (ya no hay invitados) ---
+  // else {
+  //   const match = document.cookie.match(new RegExp('id_sesion_anonimo=([^;]+)'))
+  //   if (match) {
+  //     config.headers['X-Session-Id'] = match[1]
+  //   }
+  // }
   return config
 })
 
