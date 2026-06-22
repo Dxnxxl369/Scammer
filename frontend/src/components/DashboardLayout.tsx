@@ -51,6 +51,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       return [
         { label: 'Analizador', icon: <Search size={20} />, path: '/dashboard' },
         { label: 'Historial', icon: <History size={20} />, path: '/historial' },
+        { label: 'Reportes', icon: <BarChart size={20} />, path: '/reportes' },
         { label: 'Planes', icon: <Activity size={20} />, path: '/planes' },
       ]
     }

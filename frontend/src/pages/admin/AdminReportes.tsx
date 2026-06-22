@@ -1,11 +1,15 @@
 import { DashboardLayout } from '../../components/DashboardLayout'
-import { BarChart, ArrowUpRight, TrendingUp, DollarSign, Download, Calendar, Users, Target, Activity } from 'lucide-react'
+import { BarChart, ArrowUpRight, TrendingUp, DollarSign, Download, Calendar, Users, Target, Activity, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../services/api'
 import type { RespuestaApi } from '../../types/auth'
+import { Dona, Barras, Linea, TarjetaReporte } from '../../components/charts/Charts'
+import type { Punto } from '../../components/charts/Charts'
+import { exportarJSON } from '../../utils/exportar'
 
 export function AdminReportes() {
   const [stats, setStats] = useState<any>(null)
+  const [rep, setRep] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -13,9 +17,40 @@ export function AdminReportes() {
       setStats(res.data.datos)
       setCargando(false)
     })
+    api.get<RespuestaApi<any>>('/analisis/reportes/admin/')
+      .then(res => setRep(res.data.datos))
+      .catch(() => setRep(null))
   }, [])
 
   const mrr = stats ? (stats.plan_pro * 19.99 + stats.plan_elite * 49.99).toFixed(2) : '0.00'
+
+  // Series para los gráficos (datos reales de /analisis/reportes/admin/)
+  const repPlanes: Punto[] = rep ? [
+    { label: 'Gratis', value: rep.planes?.gratis || 0, color: '#71717a' },
+    { label: 'Starter', value: rep.planes?.starter || 0, color: '#22d3ee' },
+    { label: 'Pro', value: rep.planes?.pro || 0, color: '#ff0055' },
+    { label: 'Elite', value: rep.planes?.elite || 0, color: '#f59e0b' },
+  ] : []
+  const repTipos: Punto[] = (rep?.analisis_por_tipo || []).map((x: any) => ({ label: String(x.tipo), value: x.cantidad }))
+  const repVer: Punto[] = rep ? [
+    { label: 'IA detectada', value: rep.veredictos?.ia || 0, color: '#ff0055' },
+    { label: 'Origen humano', value: rep.veredictos?.humano || 0, color: '#10b981' },
+  ] : []
+  const repDia: Punto[] = (rep?.analisis_por_dia || []).map((x: any) => ({ label: String(x.fecha), value: x.cantidad }))
+  const repTop: Punto[] = (rep?.top_usuarios || []).map((x: any) => ({ label: String(x.usuario), value: x.cantidad }))
+  const repIngresos: Punto[] = (rep?.ingresos_por_plan || []).map((x: any) => ({ label: String(x.plan), value: x.monto }))
+  const repUsuariosDia: Punto[] = (rep?.usuarios_por_dia || []).map((x: any) => ({ label: String(x.fecha), value: x.cantidad }))
+
+  if (cargando && !stats) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center">
+          <Loader2 className="w-12 h-12 text-cyan-400 animate-spin mb-4" />
+          <p className="text-cyan-400 text-[9px] font-black tracking-[0.5em] uppercase animate-pulse">Cargando métricas…</p>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
@@ -29,8 +64,8 @@ export function AdminReportes() {
             <button className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-[var(--border-color)] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 text-[var(--text-main)] transition-all">
               <Calendar size={14} /> Ciclo Actual
             </button>
-            <button className="flex items-center gap-2 px-6 py-3 bg-cyan-500 text-black rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-transform">
-              <Download size={14} /> Exportar Reporte
+            <button onClick={() => rep && exportarJSON('reporte_sistema_completo', rep)} className="flex items-center gap-2 px-6 py-3 bg-cyan-500 text-black rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-transform">
+              <Download size={14} /> Exportar Todo (JSON)
             </button>
           </div>
         </div>
@@ -81,6 +116,45 @@ export function AdminReportes() {
             </p>
           </div>
         </div>
+
+        {/* === GRÁFICOS REALES (datos de la base) === */}
+        {rep && (
+          <div className="mb-12">
+            <h3 className="text-lg font-black uppercase tracking-widest text-[var(--text-main)] mb-6 italic flex items-center gap-3">
+              <BarChart size={20} className="text-cyan-400" /> Reportes del Sistema
+              <span className="text-[9px] font-bold text-white/30 normal-case tracking-normal not-italic">· exportá cada uno en PNG / SVG / CSV / JSON</span>
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <TarjetaReporte titulo="Distribución de planes" nombre="planes" data={repPlanes}>
+                <Dona data={repPlanes} />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Veredictos del sistema: IA vs Humano" nombre="veredictos_sistema" data={repVer}>
+                <Dona data={repVer} />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Análisis por tipo" nombre="analisis_por_tipo" data={repTipos}>
+                <Barras data={repTipos} color="#22d3ee" />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Top usuarios por actividad" nombre="top_usuarios" data={repTop}>
+                <Barras data={repTop} color="#a855f7" />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Análisis por día (últimos 30)" nombre="analisis_por_dia" data={repDia}>
+                <Linea data={repDia} color="#ff0055" />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Usuarios nuevos por día" nombre="usuarios_por_dia" data={repUsuariosDia}>
+                <Linea data={repUsuariosDia} color="#10b981" />
+              </TarjetaReporte>
+
+              <TarjetaReporte titulo="Ingresos por plan (USD)" nombre="ingresos_por_plan" data={repIngresos}>
+                <Barras data={repIngresos} color="#10b981" />
+              </TarjetaReporte>
+            </div>
+          </div>
+        )}
 
         {/* Breakdown Section */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">

@@ -12,6 +12,7 @@ import { AnalysisCenter } from './pages/AnalysisCenter'
 import { Perfil } from './pages/Perfil'
 import { Historial } from './pages/Historial'
 import { Borradores } from './pages/Borradores'
+import { Reportes } from './pages/Reportes'
 import { RecuperarPassword } from './pages/RecuperarPassword'
 import HealthCheck from './pages/HealthCheck'
 import { DesignSystem } from './pages/DesignSystem'
@@ -57,6 +58,7 @@ function AppContent() {
       <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
       <Route path="/historial" element={<ProtectedRoute><Historial /></ProtectedRoute>} />
       <Route path="/borradores" element={<ProtectedRoute><Borradores /></ProtectedRoute>} />
+      <Route path="/reportes" element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
       <Route path="/prueba" element={<Prueba />} />
       
       {/* Admin Routes */}
