@@ -64,25 +64,42 @@ export function AnalysisCenter() {
   if (usuario?.rol === 'administrador') return <Navigate to="/admin" replace />
 
   const getTries = () => {
-    if (usuario) {
+    if (usuario && usuario.plan) {
+      // Preferir los valores reales que manda el backend (límites del admin).
+      if (usuario.limites && usuario.restantes) {
+        return {
+          livianos: usuario.restantes.livianos ?? 0,
+          pesados: usuario.restantes.pesados ?? 0,
+          totalLivianos: usuario.limites.livianos || 1,
+          totalPesados: usuario.limites.pesados || 1,
+        }
+      }
       const plan = usuario.plan || 'gratis'
       const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.gratis
       return {
-        livianos: Math.max(0, limits.livianos - usuario.intentos_livianos),
-        pesados: Math.max(0, limits.pesados - usuario.intentos_pesados),
+        livianos: Math.max(0, limits.livianos - (usuario.intentos_livianos || 0)),
+        pesados: Math.max(0, limits.pesados - (usuario.intentos_pesados || 0)),
         totalLivianos: limits.livianos,
         totalPesados: limits.pesados
       }
     }
     return {
-      livianos: restantesLivianos,
-      pesados: restantesPesados,
+      livianos: restantesLivianos || 0,
+      pesados: restantesPesados || 0,
       totalLivianos: 4,
       totalPesados: 3
     }
   }
 
   const { livianos, pesados, totalLivianos, totalPesados } = getTries()
+
+  // Formato: ilimitado se muestra como ∞; y las barras se limitan a 0-100%.
+  const fmtCuota = (n: number) => (!Number.isFinite(n) ? '0' : n >= 999999 ? '∞' : String(n))
+  const pct = (a: number, b: number) => {
+    const v = (a / (b || 1)) * 100
+    return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0
+  }
+  const planActual = usuario?.plan || (usuario ? 'gratis' : 'visitante')
 
   const getFileType = (file: File | null): 'imagen' | 'video' | 'audio' | 'documento' | 'codigo' | 'otro' => {
     if (!file) return 'otro'
@@ -348,24 +365,27 @@ export function AnalysisCenter() {
 
         <div className="lg:col-span-4 space-y-8">
           <div className="cyber-card p-10 relative overflow-hidden border-[var(--border-color)]">
-            <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.3em] mb-10 border-b border-[var(--border-color)] pb-4 italic">Cuota de Operación</h4>
+            <div className="flex items-center justify-between mb-10 border-b border-[var(--border-color)] pb-4">
+              <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.3em] italic">Cuota de Operación</h4>
+              <span className="text-[10px] font-black uppercase tracking-widest italic accent-text">Plan: {planActual}</span>
+            </div>
             <div className="space-y-8">
               <div>
                 <div className="flex justify-between items-end mb-3">
                   <span className="text-[10px] font-black text-[var(--text-main)] tracking-widest uppercase italic">Analizador Liviano</span>
-                  <span className="text-3xl font-black italic accent-text">{livianos}</span>
+                  <span className="text-3xl font-black italic accent-text">{fmtCuota(livianos)}</span>
                 </div>
                 <div className="w-full bg-black/10 h-2 rounded-full p-[2px]">
-                  <div className="bg-cyan-400 h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(34,211,238,0.5)]" style={{ width: `${(livianos / totalLivianos) * 100}%` }}></div>
+                  <div className="bg-cyan-400 h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(34,211,238,0.5)]" style={{ width: `${pct(livianos, totalLivianos)}%` }}></div>
                 </div>
               </div>
               <div>
                 <div className="flex justify-between items-end mb-3">
                   <span className="text-[10px] font-black text-[var(--text-main)] tracking-widest uppercase italic">Analizador Pesado</span>
-                  <span className="text-3xl font-black italic accent-text">{pesados}</span>
+                  <span className="text-3xl font-black italic accent-text">{fmtCuota(pesados)}</span>
                 </div>
                 <div className="w-full bg-black/10 h-2 rounded-full p-[2px]">
-                  <div className="bg-[var(--accent)] h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_var(--accent-glow)]" style={{ width: `${(pesados / totalPesados) * 100}%` }}></div>
+                  <div className="bg-[var(--accent)] h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_var(--accent-glow)]" style={{ width: `${pct(pesados, totalPesados)}%` }}></div>
                 </div>
               </div>
             </div>

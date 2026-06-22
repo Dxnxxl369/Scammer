@@ -23,6 +23,7 @@ import { AdminUsuarios } from './pages/admin/AdminUsuarios'
 import { AdminBitacora } from './pages/admin/AdminBitacora'
 import { AdminReportes } from './pages/admin/AdminReportes'
 import { AdminNotificacionesConfig } from './pages/admin/AdminNotificacionesConfig'
+import { AdminPlanes } from './pages/admin/AdminPlanes'
 import { Loader2 } from 'lucide-react'
 
 const queryClient = new QueryClient()
@@ -64,6 +65,7 @@ function AppContent() {
       <Route path="/admin/bitacora" element={<AdminRoute><AdminBitacora /></AdminRoute>} />
       <Route path="/admin/reportes" element={<AdminRoute><AdminReportes /></AdminRoute>} />
       <Route path="/admin/notificaciones" element={<AdminRoute><AdminNotificacionesConfig /></AdminRoute>} />
+      <Route path="/admin/planes" element={<AdminRoute><AdminPlanes /></AdminRoute>} />
     </Routes>
   )
 }

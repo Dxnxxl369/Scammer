@@ -7,7 +7,6 @@ import { useTheme } from '../contexts/ThemeContext'
 import { 
   Search, 
   History, 
-  GraduationCap, 
   Settings, 
   LogOut, 
   ShieldCheck, 
@@ -45,6 +44,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         { label: 'Directorio', icon: <Users size={20} />, path: '/admin/usuarios' },
         { label: 'Bitácora', icon: <ScrollText size={20} />, path: '/admin/bitacora' },
         { label: 'Finanzas', icon: <BarChart size={20} />, path: '/admin/reportes' },
+        { label: 'Planes', icon: <Activity size={20} />, path: '/admin/planes' },
       ]
     }
     if (usuario) {
@@ -52,7 +52,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         { label: 'Analizador', icon: <Search size={20} />, path: '/dashboard' },
         { label: 'Historial', icon: <History size={20} />, path: '/historial' },
         { label: 'Planes', icon: <Activity size={20} />, path: '/planes' },
-        { label: 'Academia', icon: <GraduationCap size={20} />, path: '/academia' },
       ]
     }
     return [

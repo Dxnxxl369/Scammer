@@ -105,9 +105,18 @@ export const authService = {
   },
 
   async obtenerSesionActual(): Promise<Usuario | null> {
-    // Forzamos el refresco del token para evitar usar uno expirado
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    if (!session || sessionError) return null
+    // Aceptamos identidad simple (header X-User-ID) aunque no haya sesión de Supabase.
+    const port = window.location.port || '80'
+    const storedUserId = localStorage.getItem(`scammer-user-id-${port}`)
+    let session = null
+    try {
+      const res = await supabase.auth.getSession()
+      session = res.data.session
+    } catch {
+      session = null
+    }
+    // Sin sesión de Supabase NI id guardado => no hay a quién consultar.
+    if (!session && !storedUserId) return null
 
     try {
       const response = await api.get<RespuestaApi<Usuario>>('/auth/yo/')
