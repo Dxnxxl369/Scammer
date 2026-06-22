@@ -3,6 +3,7 @@ import { Loader2, FileBarChart, Inbox } from 'lucide-react'
 import { DashboardLayout } from '../components/DashboardLayout'
 import { Dona, Barras, Linea, TarjetaReporte } from '../components/charts/Charts'
 import type { Punto } from '../components/charts/Charts'
+import { GeneradorReporte } from '../components/charts/GeneradorReporte'
 import { api } from '../services/api'
 
 export function Reportes() {
@@ -50,6 +51,9 @@ export function Reportes() {
             Resumen de tus {d.total ?? 0} análisis · usá el ícono ↓ de cada tarjeta para exportar (PNG / CSV)
           </p>
         </div>
+
+        {/* Generador dinámico por voz/texto (OpenAI + Whisper) */}
+        <GeneradorReporte />
 
         {(!d.total) ? (
           <div className="cyber-card p-16 bg-white/[0.02] border border-white/5 rounded-3xl flex flex-col items-center text-center">

@@ -5,6 +5,7 @@ import { api } from '../../services/api'
 import type { RespuestaApi } from '../../types/auth'
 import { Dona, Barras, Linea, TarjetaReporte } from '../../components/charts/Charts'
 import type { Punto } from '../../components/charts/Charts'
+import { GeneradorReporte } from '../../components/charts/GeneradorReporte'
 import { exportarJSON } from '../../utils/exportar'
 
 export function AdminReportes() {
@@ -69,6 +70,9 @@ export function AdminReportes() {
             </button>
           </div>
         </div>
+
+        {/* Generador dinámico por voz/texto (OpenAI + Whisper) */}
+        <GeneradorReporte />
 
         {/* Top Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">

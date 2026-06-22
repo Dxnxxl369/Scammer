@@ -135,3 +135,11 @@ STRIPE_CANCEL_URL = config('STRIPE_CANCEL_URL', default='https://scammer.app/pag
 # Si True: al "pagar", si Stripe no está configurado o falla, igual se activa el
 # plan SIN cobro (modo demo). Poner en False en producción para exigir pago real.
 PAGOS_PERMITIR_BYPASS = config('PAGOS_PERMITIR_BYPASS', default=True, cast=bool)
+
+# ── OpenAI (reportes por voz/texto): Whisper para transcribir + GPT para
+# interpretar el pedido en lenguaje natural. Si OPENAI_API_KEY está vacía,
+# el generador cae a un modo por palabras clave (sin IA).
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+OPENAI_CHAT_MODEL = config('OPENAI_CHAT_MODEL', default='gpt-4o-mini')
+OPENAI_WHISPER_MODEL = config('OPENAI_WHISPER_MODEL', default='whisper-1')
+

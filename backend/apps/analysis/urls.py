@@ -15,7 +15,7 @@ from .views import (
     MarcarNotificacionLeidaView,
     PreferenciasNotificacionView
 )
-from .views_reportes import ReportesUsuarioView, ReportesAdminView
+from .views_reportes import ReportesUsuarioView, ReportesAdminView, ConsultarReporteView, TranscribirAudioView
 
 urlpatterns = [
     path('texto/', AnalizarTextoView.as_view(), name='analizar_texto'),
@@ -34,4 +34,6 @@ urlpatterns = [
     path('notificaciones/preferencias/', PreferenciasNotificacionView.as_view(), name='notificaciones_preferencias'),    
     path('reportes/mios/', ReportesUsuarioView.as_view(), name='reportes_mios'),
     path('reportes/admin/', ReportesAdminView.as_view(), name='reportes_admin'),
+    path('reportes/consultar/', ConsultarReporteView.as_view(), name='reportes_consultar'),
+    path('reportes/transcribir/', TranscribirAudioView.as_view(), name='reportes_transcribir'),
 ]
