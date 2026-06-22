@@ -53,7 +53,7 @@ function AppContent() {
       <Route path="/registro" element={<PublicOnlyRoute><Registro /></PublicOnlyRoute>} />
       <Route path="/planes" element={<Planes />} />
       <Route path="/recuperar-password" element={<RecuperarPassword />} />
-      <Route path="/dashboard" element={<AnalysisCenter />} />
+      <Route path="/dashboard" element={<ProtectedRoute><AnalysisCenter /></ProtectedRoute>} />
       <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
       <Route path="/historial" element={<ProtectedRoute><Historial /></ProtectedRoute>} />
       <Route path="/borradores" element={<ProtectedRoute><Borradores /></ProtectedRoute>} />
