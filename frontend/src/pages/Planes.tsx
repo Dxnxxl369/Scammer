@@ -17,6 +17,35 @@ export function Planes() {
   const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvv: '' })
   const [cardBrand, setCardBrand] = useState<'visa' | 'mastercard' | 'unknown'>('unknown')
 
+  // Config REAL de planes (precio + límites) desde la BD = lo que el admin edita
+  // en /admin/planes. Si la carga falla, se usan los valores por defecto del JSX.
+  const [cfgPlanes, setCfgPlanes] = useState<Record<string, { precio: number; limite_livianos: number; limite_pesados: number }>>({})
+
+  useEffect(() => {
+    api.get('/pagos/planes/')
+      .then(res => {
+        const arr = (res.data?.datos || []) as any[]
+        const map: Record<string, any> = {}
+        arr.forEach(p => { if (p?.plan) map[p.plan] = p })
+        setCfgPlanes(map)
+      })
+      .catch(() => { /* quedan los valores por defecto del JSX */ })
+  }, [])
+
+  // Precio (sin "$") de la BD, o el fallback hardcodeado si aún no cargó.
+  const precioNum = (plan: string, fallback: string) => {
+    const c = cfgPlanes[plan]
+    return c ? String(c.precio) : fallback
+  }
+  // Texto de cuota: número real, o "ILIMITADOS" si es 999999+.
+  const cuotaTxt = (plan: string, tipo: 'Livianos' | 'Pesados', fallback: string) => {
+    const c = cfgPlanes[plan]
+    if (!c) return fallback
+    const n = tipo === 'Livianos' ? c.limite_livianos : c.limite_pesados
+    if (n == null) return fallback
+    return n >= 999999 ? `${tipo} ILIMITADOS` : `${n} Análisis ${tipo}`
+  }
+
   const handleCheckout = (plan: 'starter' | 'pro' | 'elite') => {
     if (!usuario) { navigate('/login'); return }
     setSelectedPlan(plan)
@@ -97,13 +126,13 @@ export function Planes() {
             <div className="mb-6">
               <span className="text-[8px] font-black px-3 py-1 bg-zinc-700 text-white rounded-full uppercase tracking-widest mb-4 inline-block">Nivel 0</span>
               <h3 className="text-2xl font-black italic text-zinc-400 mb-1">AGENTE_FREE</h3>
-              <p className="text-3xl font-black text-white">$0 <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
+              <p className="text-3xl font-black text-white">${precioNum('gratis', '0')} <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
             </div>
             <div className="space-y-6 flex-1 text-[11px] font-bold text-white/60">
               <div className="space-y-2">
                 <p className="text-white/20 uppercase text-[9px] tracking-widest">Cuotas</p>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-zinc-500" /> 10 Análisis Livianos</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-zinc-500" /> 3 Análisis Pesados</div>
+                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-zinc-500" /> {cuotaTxt('gratis', 'Livianos', '10 Análisis Livianos')}</div>
+                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-zinc-500" /> {cuotaTxt('gratis', 'Pesados', '3 Análisis Pesados')}</div>
               </div>
               <div className="space-y-2">
                 <p className="text-white/20 uppercase text-[9px] tracking-widest">Storage (Supabase)</p>
@@ -121,13 +150,13 @@ export function Planes() {
             <div className="mb-6">
               <span className="text-[8px] font-black px-3 py-1 bg-cyan-500 text-black rounded-full uppercase tracking-widest mb-4 inline-block">Nivel 1</span>
               <h3 className="text-2xl font-black italic text-cyan-400 mb-1">STARTER_KIT</h3>
-              <p className="text-3xl font-black text-white">$9.99 <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
+              <p className="text-3xl font-black text-white">${precioNum('starter', '9.99')} <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
             </div>
             <div className="space-y-6 flex-1 text-[11px] font-bold text-white/80">
               <div className="space-y-2">
                 <p className="text-cyan-500/30 uppercase text-[9px] tracking-widest">Cuotas</p>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-cyan-400" /> 50 Análisis Livianos</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-cyan-400" /> 15 Análisis Pesados</div>
+                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-cyan-400" /> {cuotaTxt('starter', 'Livianos', '50 Análisis Livianos')}</div>
+                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-cyan-400" /> {cuotaTxt('starter', 'Pesados', '15 Análisis Pesados')}</div>
               </div>
               <div className="space-y-2">
                 <p className="text-cyan-500/30 uppercase text-[9px] tracking-widest">Storage (Supabase)</p>
@@ -152,13 +181,13 @@ export function Planes() {
             <div className="mb-6">
               <span className="text-[8px] font-black px-3 py-1 bg-rose-500 text-white rounded-full uppercase tracking-widest mb-4 inline-block">Nivel 2</span>
               <h3 className="text-2xl font-black italic text-rose-500 mb-1">PRO_OPERATOR</h3>
-              <p className="text-3xl font-black text-white">$19.99 <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
+              <p className="text-3xl font-black text-white">${precioNum('pro', '19.99')} <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
             </div>
             <div className="space-y-6 flex-1 text-[11px] font-bold text-white">
               <div className="space-y-2">
                 <p className="text-rose-500/30 uppercase text-[9px] tracking-widest">Cuotas</p>
-                <div className="flex items-center gap-2"><InfinityIcon className="w-3 h-3 text-rose-500" /> Livianos ILIMITADOS</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-rose-500" /> 50 Análisis Pesados</div>
+                <div className="flex items-center gap-2"><InfinityIcon className="w-3 h-3 text-rose-500" /> {cuotaTxt('pro', 'Livianos', 'Livianos ILIMITADOS')}</div>
+                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-rose-500" /> {cuotaTxt('pro', 'Pesados', '50 Análisis Pesados')}</div>
               </div>
               <div className="space-y-2">
                 <p className="text-rose-500/30 uppercase text-[9px] tracking-widest">Storage (Supabase)</p>
@@ -182,12 +211,13 @@ export function Planes() {
             <div className="mb-6">
               <span className="text-[8px] font-black px-3 py-1 bg-amber-500 text-black rounded-full uppercase tracking-widest mb-4 inline-block">Nivel Max</span>
               <h3 className="text-2xl font-black italic text-amber-500 mb-1">ELITE_TERMINAL</h3>
-              <p className="text-3xl font-black text-white">$49.99 <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
+              <p className="text-3xl font-black text-white">${precioNum('elite', '49.99')} <span className="text-[10px] text-white/20 font-normal">/ MES</span></p>
             </div>
             <div className="space-y-6 flex-1 text-[11px] font-bold text-white">
               <div className="space-y-2">
                 <p className="text-amber-500/30 uppercase text-[9px] tracking-widest">Cuotas</p>
-                <div className="flex items-center gap-2"><InfinityIcon className="w-3 h-3 text-amber-500" /> TODO ILIMITADO</div>
+                <div className="flex items-center gap-2"><InfinityIcon className="w-3 h-3 text-amber-500" /> {cuotaTxt('elite', 'Livianos', 'Livianos ILIMITADOS')}</div>
+                <div className="flex items-center gap-2"><InfinityIcon className="w-3 h-3 text-amber-500" /> {cuotaTxt('elite', 'Pesados', 'Pesados ILIMITADOS')}</div>
               </div>
               <div className="space-y-2">
                 <p className="text-amber-500/30 uppercase text-[9px] tracking-widest">Storage (Supabase)</p>
@@ -233,7 +263,7 @@ export function Planes() {
                   <p className="text-[9px] font-black text-white/50 uppercase mb-2 italic tracking-widest">Suscripción Técnica</p>
                   <p className="text-lg font-black uppercase text-white tracking-tight">{selectedPlan.toUpperCase()}</p>
                   <p className={`text-4xl font-black italic mt-2 ${selectedPlan === 'pro' ? 'text-[#ff0055]' : (selectedPlan === 'elite' ? 'text-amber-500' : 'text-cyan-400')}`}>
-                    ${selectedPlan === 'pro' ? '19.99' : (selectedPlan === 'elite' ? '49.99' : '9.99')} <span className="text-[10px] font-bold text-white/50 not-italic">/ MES</span>
+                    ${precioNum(selectedPlan, selectedPlan === 'pro' ? '19.99' : (selectedPlan === 'elite' ? '49.99' : '9.99'))} <span className="text-[10px] font-bold text-white/50 not-italic">/ MES</span>
                   </p>
                 </div>
               </div>
