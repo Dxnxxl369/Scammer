@@ -268,15 +268,14 @@ class IniciarSesionSessionView(APIView):
         response = respuesta_exitosa(request.user.payload, mensaje='Sesión vinculada correctamente')
         
         # Seteamos la cookie HttpOnly válida por 30 días
-        # IMPORTANTE: samesite='None' y secure=True son requeridos para Chrome 
-        # al hacer peticiones entre diferentes puertos (ej. 5174 -> 8000)
+        # IMPORTANTE: En HTTP (IP pura) samesite debe ser 'Lax' y secure=False
         response.set_cookie(
             'scammer_session',
             token,
             max_age=60 * 60 * 24 * 30, # 30 días
             httponly=True,
-            secure=True, # Obligatorio para SameSite=None
-            samesite='None', 
+            secure=False, # Cambiado a False para permitir HTTP en AWS
+            samesite='Lax', # Cambiado a Lax porque SameSite=None exige secure=True
             path='/'
         )
         return response
