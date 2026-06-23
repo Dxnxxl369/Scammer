@@ -31,25 +31,23 @@ class CallRecorderService {
 
     final dir = await carpetaLlamadas();
     final fecha = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
-    _rutaActual = '${dir.path}/LLAMADA_$fecha.wav';
+    _rutaActual = '${dir.path}/LLAMADA_$fecha.m4a';
 
-    // VOICE_CALL esta bloqueado a nivel de sistema en este TECNO -> usamos la
-    // fuente VoIP del microfono con ALTAVOZ activado, para captar la voz del
-    // otro que sale por la bocina. Fallback a MIC normal.
     for (final src in const [
+      AndroidAudioSource.voiceRecognition,
       AndroidAudioSource.voiceCommunication,
+      AndroidAudioSource.camcorder,
       AndroidAudioSource.mic,
     ]) {
       try {
         await _record.start(
           RecordConfig(
-            encoder: AudioEncoder.wav,
-            sampleRate: 16000,
+            encoder: AudioEncoder.aacLc,
+            bitRate: 64000,
+            sampleRate: 44100,
             numChannels: 1,
             androidConfig: AndroidRecordConfig(
               audioSource: src,
-              speakerphone: true,
-              audioManagerMode: AudioManagerMode.modeInCommunication,
             ),
           ),
           path: _rutaActual!,
@@ -73,17 +71,22 @@ class CallRecorderService {
     return await f.exists() ? f : null;
   }
 
-  /// La última grabación que hizo la app (la más reciente de nuestra carpeta).
-  static Future<File?> ultimaLocal() async {
+  /// Devuelve TODAS las grabaciones locales ordenadas de más reciente a más antigua.
+  static Future<List<File>> todasLasLocales() async {
     final dir = await carpetaLlamadas();
     final files = dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.toLowerCase().endsWith('.wav'))
+        .where((f) => f.path.toLowerCase().endsWith('.wav') || f.path.toLowerCase().endsWith('.m4a') || f.path.toLowerCase().endsWith('.mp3'))
         .toList();
-    if (files.isEmpty) return null;
     files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    return files.first;
+    return files;
+  }
+
+  /// La última grabación que hizo la app (la más reciente de nuestra carpeta).
+  static Future<File?> ultimaLocal() async {
+    final files = await todasLasLocales();
+    return files.isNotEmpty ? files.first : null;
   }
 
   /// Cancela la grabación y descarta el archivo.

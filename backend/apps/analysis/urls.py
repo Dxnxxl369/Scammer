@@ -1,8 +1,8 @@
 from django.urls import path
 from .views import (
     AnalizarTextoView, 
-    AnalizarCodigoView, 
-    AnalizarSmsView, 
+    AnalizarSmsView,
+    AnalizarCodigoView,
     AnalizarImagenView, 
     AnalizarAudioView,
     AnalizarLlamadaView,
@@ -19,8 +19,8 @@ from .views_reportes import ReportesUsuarioView, ReportesAdminView, ConsultarRep
 
 urlpatterns = [
     path('texto/', AnalizarTextoView.as_view(), name='analizar_texto'),
-    path('codigo/', AnalizarCodigoView.as_view(), name='analizar_codigo'),
     path('sms/', AnalizarSmsView.as_view(), name='analizar_sms'),
+    path('codigo/', AnalizarCodigoView.as_view(), name='analizar_codigo'),
     path('imagen/', AnalizarImagenView.as_view(), name='analizar_imagen'),
     path('audio/', AnalizarAudioView.as_view(), name='analizar_audio'),
     path('llamada/', AnalizarLlamadaView.as_view(), name='analizar_llamada'),

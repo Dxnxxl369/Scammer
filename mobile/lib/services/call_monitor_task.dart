@@ -18,7 +18,9 @@ void startCallMonitor() {
 class CallMonitorHandler extends TaskHandler {
   final AudioRecorder _rec = AudioRecorder();
   bool _grabando = false;
+  bool _grabacionManual = false;
   String? _rutaActual;
+  DateTime? _tiempoInicio;
   int _tick = 0;
   CallState? _ultimoEstado;
 
@@ -52,7 +54,37 @@ class CallMonitorHandler extends TaskHandler {
     FlutterForegroundTask.updateService(
       notificationTitle: 'Monitoreando llamadas',
       notificationText: 'Esperando una llamada para grabarla...',
+      notificationButtons: [
+        const NotificationButton(id: 'btn_start_record', text: 'Grabar Ahora'),
+        const NotificationButton(id: 'btn_stop_service', text: 'Detener Servicio'),
+      ],
     );
+  }
+
+  /// Maneja los botones de accion de la notificacion persistente.
+  /// Permite al usuario detener el servicio desde CUALQUIER app sin abrir Scammer.
+  @override
+  void onNotificationButtonPressed(String id) {
+    _log('Botón de notificación presionado: $id');
+    if (id == 'btn_stop_service') {
+      _log('-> Deteniendo ForegroundService por solicitud del usuario');
+      if (_grabando) {
+        _detener();
+      }
+      FlutterForegroundTask.stopService();
+    } else if (id == 'btn_start_record') {
+      _log('-> Iniciando grabación manualmente por botón');
+      if (!_grabando) {
+        _grabacionManual = true;
+        _iniciar();
+      }
+    } else if (id == 'btn_stop_record') {
+      _log('-> Deteniendo grabación manualmente por botón');
+      if (_grabando) {
+        _grabacionManual = false;
+        _detener();
+      }
+    }
   }
 
   @override
@@ -73,10 +105,11 @@ class CallMonitorHandler extends TaskHandler {
     _ultimoEstado = estado;
 
     if (estado == CallState.OFFHOOK && !_grabando) {
-      _log('📞 -> llamada ACTIVA detectada, iniciando grabacion...');
+      _log('📞 -> llamada ACTIVA detectada, iniciando grabacion automatica...');
+      _grabacionManual = false;
       await _iniciar();
-    } else if (estado == CallState.IDLE && _grabando) {
-      _log('🛑 -> llamada TERMINADA, deteniendo grabacion...');
+    } else if (estado == CallState.IDLE && _grabando && !_grabacionManual) {
+      _log('🛑 -> llamada TERMINADA, deteniendo grabacion automatica...');
       await _detener();
     }
   }
@@ -91,15 +124,16 @@ class CallMonitorHandler extends TaskHandler {
       _log('_iniciar: hasPermission=$perm (intento grabar igual, no bloqueo)');
       final dir = await _carpetaLlamadas();
       final ts = DateFormat('dd-MM-yyyy_HH-mm-ss').format(DateTime.now());
-      _rutaActual = '${dir.path}/LLAMADA_$ts.wav';
+      _rutaActual = '${dir.path}/LLAMADA_$ts.m4a';
       _log('_iniciar: grabando a $_rutaActual');
 
-      // VOICE_CALL esta BLOQUEADO a nivel de sistema en este TECNO (AudioFlinger
-      // status -1 -> archivo de 0 bytes). La unica via real es grabar por el
-      // MICROFONO con el ALTAVOZ activado (speakerphone): asi el mic capta la voz
-      // del otro que sale por la bocina. Usamos la fuente VoIP (no bloqueada).
+      // En Android 10+ grabar llamadas está bloqueado y da silencio.
+      // Las fuentes "voiceRecognition" o "camcorder" suelen saltarse la restricción
+      // mejor que "mic" puro. También es mejor no forzar audioManagerMode.
       const fuentes = [
+        AndroidAudioSource.voiceRecognition,
         AndroidAudioSource.voiceCommunication,
+        AndroidAudioSource.camcorder,
         AndroidAudioSource.mic,
       ];
       bool iniciado = false;
@@ -107,19 +141,20 @@ class CallMonitorHandler extends TaskHandler {
         try {
           await _rec.start(
             RecordConfig(
-              encoder: AudioEncoder.wav,
-              sampleRate: 16000,
+              encoder: AudioEncoder.aacLc,
+              bitRate: 64000,
+              sampleRate: 44100,
               numChannels: 1,
               androidConfig: AndroidRecordConfig(
                 audioSource: src,
-                speakerphone: true,
-                audioManagerMode: AudioManagerMode.modeInCommunication,
+                // Quitar speakerphone y modeInCommunication puede evitar conflictos
+                // con la app de teléfono nativa.
               ),
             ),
             path: _rutaActual!,
           );
           iniciado = true;
-          _log('grabando con fuente=${src.name} (altavoz ON)');
+          _log('grabando con fuente=${src.name} (.m4a)');
           break;
         } catch (e) {
           _log('fuente ${src.name} fallo ($e) -> pruebo la siguiente');
@@ -132,10 +167,14 @@ class CallMonitorHandler extends TaskHandler {
       }
 
       _grabando = true;
+      _tiempoInicio = DateTime.now();
       _log('✅ grabacion INICIADA');
       FlutterForegroundTask.updateService(
         notificationTitle: 'Grabando llamada...',
         notificationText: 'Scammer esta grabando la llamada actual',
+        notificationButtons: [
+          const NotificationButton(id: 'btn_stop_record', text: 'Detener Grabación'),
+        ],
       );
     } catch (e) {
       _grabando = false;
@@ -154,8 +193,11 @@ class CallMonitorHandler extends TaskHandler {
         final existe = await f.exists();
         _log('_detener: archivo existe=$existe');
         if (existe) {
+          int seg = 0;
+          if (_tiempoInicio != null) {
+            seg = DateTime.now().difference(_tiempoInicio!).inSeconds;
+          }
           final bytes = await f.length();
-          final seg = ((bytes - 44) / 32000).round();
           _log('✅ GUARDADO: ${destino.split('/').last} ($bytes bytes, ~${seg}s)');
           if (bytes <= 1024) {
             _log('⚠️ archivo casi vacio -> probable SILENCIO (el OEM bloqueo la captura)');
@@ -165,6 +207,10 @@ class CallMonitorHandler extends TaskHandler {
           FlutterForegroundTask.updateService(
             notificationTitle: 'Llamada grabada ($m:$s)',
             notificationText: 'Abri Scammer para analizarla',
+            notificationButtons: [
+              const NotificationButton(id: 'btn_start_record', text: 'Grabar Ahora'),
+              const NotificationButton(id: 'btn_stop_service', text: 'Detener Servicio'),
+            ],
           );
           FlutterForegroundTask.sendDataToMain('REC:$destino');
           return;
@@ -174,6 +220,10 @@ class CallMonitorHandler extends TaskHandler {
       FlutterForegroundTask.updateService(
         notificationTitle: 'Monitoreando llamadas',
         notificationText: 'Esperando una llamada para grabarla...',
+        notificationButtons: [
+          const NotificationButton(id: 'btn_start_record', text: 'Grabar Ahora'),
+          const NotificationButton(id: 'btn_stop_service', text: 'Detener Servicio'),
+        ],
       );
     } catch (e) {
       _grabando = false;

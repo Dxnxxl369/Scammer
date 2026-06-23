@@ -18,6 +18,9 @@ import '../services/call_recordings_service.dart';
 import '../services/notification_helper.dart';
 import '../models/analysis.dart';
 import '../widgets/master_header.dart';
+import '../services/monitor_prefs_service.dart';
+import '../services/battery_optimization_service.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -111,9 +114,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
           return;
         }
+        // ✅ Guardar estado: el servicio debe sobrevivir cierres de app
+        await MonitorPrefsService.setCallEnabled(true);
+        // ✅ Solicitar excepción de batería para que Android no mate el servicio
+        final batOk = await BatteryOptimizationService.solicitarExcepcion();
+        _addLog('Excepción batería => ${batOk ? "concedida ✅" : "denegada ⚠️ (servicio puede detenerse)"}');
       } else {
         await CallMonitorControl.desactivar();
-        _addLog('servicio detenido');
+        // ✅ Limpiar estado guardado
+        await MonitorPrefsService.setCallEnabled(false);
+        _addLog('servicio detenido y estado borrado');
       }
       if (mounted) {
         setState(() {
@@ -251,28 +261,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // ===== Opción A: detectar y analizar grabaciones de llamada del teléfono =====
-  Future<void> _analizarUltimaGrabada() async {
-    setState(() => _loadingRecording = true);
-    try {
-      // Lee de NUESTRA carpeta (la app graba y guarda ahí). No depende del teléfono.
-      final file = await CallRecorderService.ultimaLocal();
-      if (file == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AÚN NO GRABASTE NINGUNA LLAMADA. USÁ "GRABAR LLAMADA".')),
-          );
-        }
-        return;
+  Future<void> _mostrarGrabacionesLocales() async {
+    final files = await CallRecorderService.todasLasLocales();
+    if (files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AÚN NO GRABASTE NINGUNA LLAMADA. USÁ "GRABAR LLAMADA".')),
+        );
       }
-      if (!mounted) return;
-      setState(() {
-        _selectedFile = file;
-        _lastResult = null;
-      });
-      await _handleStartScan(); // analiza el archivo como 'llamada' (modelo local)
-    } finally {
-      if (mounted) setState(() => _loadingRecording = false);
+      return;
     }
+    if (!mounted) return;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.getCard(Provider.of<AuthProvider>(context, listen: false).isDarkMode),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return LocalRecordingsSheet(
+          files: files,
+          onAnalyze: (f) {
+            setState(() {
+              _selectedFile = f;
+              _lastResult = null;
+            });
+            _handleStartScan();
+          },
+        );
+      },
+    );
   }
 
   Future<void> _toggleAutoDetect(bool on) async {
@@ -756,7 +773,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 18),
           GestureDetector(
-            onTap: _loadingRecording ? null : _analizarUltimaGrabada,
+            onTap: _loadingRecording ? null : _mostrarGrabacionesLocales,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 15),
@@ -769,7 +786,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Center(
                 child: _loadingRecording
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
-                    : const Text('ANALIZAR ÚLTIMA GRABACIÓN',
+                    : const Text('VER GRABACIONES GUARDADAS',
                         style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
               ),
             ),
@@ -1121,6 +1138,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const Text('IA CONFID.', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.textMuted, letterSpacing: 1)),
             ],
           )
+        ],
+      ),
+    );
+  }
+}
+class LocalRecordingsSheet extends StatefulWidget {
+  final List<File> files;
+  final Function(File) onAnalyze;
+
+  const LocalRecordingsSheet({super.key, required this.files, required this.onAnalyze});
+
+  @override
+  State<LocalRecordingsSheet> createState() => _LocalRecordingsSheetState();
+}
+
+class _LocalRecordingsSheetState extends State<LocalRecordingsSheet> {
+  final AudioPlayer _player = AudioPlayer();
+  String? _playingPath;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay(String path) async {
+    try {
+      if (_playingPath == path) {
+        setState(() => _playingPath = null);
+        await _player.stop();
+      } else {
+        setState(() => _playingPath = path);
+        await _player.play(DeviceFileSource(path));
+        _player.onPlayerComplete.listen((event) {
+          if (mounted) setState(() => _playingPath = null);
+        });
+      }
+    } catch (e) {
+      print('Error reproduciendo: $e');
+      if (mounted) setState(() => _playingPath = null);
+      try {
+        await _player.play(UrlSource(path));
+      } catch (e2) {
+        print('Error fallback reproduciendo: $e2');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('GRABACIONES GUARDADAS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: widget.files.length,
+              itemBuilder: (context, index) {
+                final f = widget.files[index];
+                final name = f.path.split('/').last;
+                final kb = (f.lengthSync() / 1024).toStringAsFixed(1);
+                final isPlaying = _playingPath == f.path;
+                return ListTile(
+                  leading: const Icon(LucideIcons.mic, color: AppColors.accent),
+                  title: Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  subtitle: Text('$kb KB', style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(isPlaying ? LucideIcons.square : LucideIcons.play, color: AppColors.accent),
+                        onPressed: () => _togglePlay(f.path),
+                      ),
+                      IconButton(
+                        icon: const Icon(LucideIcons.scan, color: AppColors.accent),
+                        onPressed: () {
+                          _player.stop();
+                          Navigator.pop(context);
+                          widget.onAnalyze(f);
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );

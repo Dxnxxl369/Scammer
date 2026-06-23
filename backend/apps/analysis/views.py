@@ -61,24 +61,6 @@ class AnalizarTextoView(AnalisisBaseView):
         except Exception as e:
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class AnalizarCodigoView(AnalisisBaseView):
-    def post(self, request):
-        identificador = self.obtener_identificador(request)
-        if not identificador:
-            return respuesta_error('IDENTIFICADOR_REQUERIDO', 'No hay sesión activa', status.HTTP_401_UNAUTHORIZED)
-        codigo = request.data.get('codigo')
-        if not codigo or not str(codigo).strip():
-            return respuesta_error('DATOS_FALTANTES', 'Se requiere código', status.HTTP_400_BAD_REQUEST)
-        lenguaje = request.data.get('lenguaje')
-        try:
-            from .code_detector import analizar_codigo, ESTADO_MOTOR
-            resultado = analizar_codigo(identificador, str(codigo), lenguaje, self.obtener_ip(request))
-            if resultado.get('estado') == ESTADO_MOTOR:
-                return respuesta_error('MOTOR_NO_DISPONIBLE', resultado.get('detalles', 'Motor no disponible'), status.HTTP_503_SERVICE_UNAVAILABLE)
-            return respuesta_exitosa(resultado)
-        except Exception as e:
-            return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 class AnalizarSmsView(AnalisisBaseView):
     def post(self, request):
@@ -96,6 +78,28 @@ class AnalizarSmsView(AnalisisBaseView):
             return respuesta_exitosa(resultado)
         except Exception as e:
             return respuesta_error('ERROR_ANALISIS', str(e), status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AnalizarCodigoView(AnalisisBaseView):
+    def post(self, request):
+        identificador = self.obtener_identificador(request)
+        if not identificador:
+            return respuesta_error('IDENTIFICADOR_REQUERIDO', 'No hay sesión activa', status.HTTP_401_UNAUTHORIZED)
+        codigo = request.data.get('codigo')
+        if not codigo or not str(codigo).strip():
+            return respuesta_error('DATOS_FALTANTES', 'Se requiere el campo "codigo"', status.HTTP_400_BAD_REQUEST)
+        lenguaje = request.data.get('lenguaje')  # opcional
+        try:
+            from .code_detector import analizar_codigo
+            resultado = analizar_codigo(identificador, str(codigo), lenguaje, self.obtener_ip(request))
+            if resultado.get('estado') == 'INSUFICIENTE':
+                return respuesta_error('FRAGMENTO_INSUFICIENTE', resultado.get('detalles', 'Fragmento muy corto'), status.HTTP_422_UNPROCESSABLE_ENTITY)
+            return respuesta_exitosa(resultado)
+        except Exception as e:
+            err = str(e)
+            if 'LIMITE' in err:
+                return respuesta_error('LIMITE_ALCANZADO', 'Límite de análisis alcanzado', status.HTTP_429_TOO_MANY_REQUESTS)
+            return respuesta_error('ERROR_ANALISIS', err, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AnalizarImagenView(AnalisisBaseView):

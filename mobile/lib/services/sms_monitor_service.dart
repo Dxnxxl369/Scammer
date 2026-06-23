@@ -3,6 +3,7 @@ import 'package:another_telephony/telephony.dart';
 import '../models/analysis.dart';
 import 'analysis_service.dart';
 import 'notification_helper.dart';
+import 'monitor_prefs_service.dart';
 
 // Logger explícito para depurar el monitoreo de SMS. Prefijo [SMS-MON] para
 // poder filtrar en la consola de `flutter run` o con: adb logcat | findstr SMS-MON
@@ -14,6 +15,11 @@ void _log(String m) => print('[SMS-MON] $m');
 Future<void> smsBackgroundHandler(SmsMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   _log('📩📩 BACKGROUND handler DISPARADO (app cerrada/2do plano)');
+  final isEnabled = await MonitorPrefsService.getSmsEnabled();
+  if (!isEnabled) {
+    _log('     Monitoreo SMS está DESACTIVADO en preferencias -> ignorando SMS.');
+    return;
+  }
   _log('     remitente=${message.address}  bodyLen=${message.body?.length}');
   _log('     body="${message.body}"');
   final body = message.body ?? '';
@@ -26,11 +32,28 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
     final out = await AnalysisService.analyzeSms(body, message.address, auto: true);
     final res = out.result;
     _log('     <- err=${out.error}  prob=${res?.aiProbability}  veredicto=${res?.veredicto}  estado=${res?.estado}');
-    if (res != null && res.estado == 'OK' && res.aiProbability >= 60) {
-      _log('     ⚠️ riesgo>=60 -> mostrando notificación');
-      await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
-    } else {
-      _log('     riesgo<60 o sin resultado -> NO notifico');
+    if (res != null) {
+      await MonitorPrefsService.addSmsToHistory(message.address ?? 'Desconocido', body, res.aiProbability, res.veredicto ?? 'OK');
+      if (res.estado == 'OK' && res.aiProbability >= 60) {
+        _log('     ⚠️ riesgo>=60 -> mostrando notificación');
+        await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
+      } else {
+        _log('     riesgo<60 o sin resultado -> NO notifico');
+        // Notificación opcional informativa (silenciosa)
+        await NotificationHelper.showSmishingAlert(
+          message.address ?? 'Desconocido', 
+          AnalysisResult(
+            id: 'local',
+            type: 'sms',
+            content: 'sms',
+            aiProbability: res.aiProbability,
+            verdict: res.verdict,
+            details: 'SMS Analizado localmente. Riesgo bajo.',
+            criticalPoints: [],
+            date: DateTime.now(),
+          )
+        );
+      }
     }
   } catch (e, st) {
     _log('     ❌ EXCEPCIÓN en background handler: $e');
@@ -83,8 +106,18 @@ class SmsMonitorService {
     }
   }
 
+  /// Detiene el procesamiento de SMS.
+  static void stop() {
+    _started = false;
+    _log('stop() llamado. Monitoreo en memoria detenido.');
+  }
+
   /// Llega un SMS con la app abierta: analiza, notifica si es riesgoso y avisa a la UI.
   static Future<void> _onForeground(SmsMessage message) async {
+    if (!_started) {
+      _log('📩 onNewMessage (FOREGROUND) IGNORADO (servicio detenido)');
+      return;
+    }
     _log('📩 onNewMessage (FOREGROUND) DISPARADO');
     _log('   remitente=${message.address}  bodyLen=${message.body?.length}');
     _log('   body="${message.body}"');
@@ -96,11 +129,28 @@ class SmsMonitorService {
         final out = await AnalysisService.analyzeSms(body, message.address, auto: true);
         res = out.result;
         _log('   <- err=${out.error}  prob=${res?.aiProbability}  veredicto=${res?.veredicto}  estado=${res?.estado}');
-        if (res != null && res.estado == 'OK' && res.aiProbability >= 60) {
-          _log('   ⚠️ riesgo>=60 -> mostrando notificación');
-          await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
-        } else {
-          _log('   riesgo<60 o sin resultado -> NO notifico');
+        if (res != null) {
+          await MonitorPrefsService.addSmsToHistory(message.address ?? 'Desconocido', body, res.aiProbability, res.veredicto ?? 'OK');
+          if (res.estado == 'OK' && res.aiProbability >= 60) {
+            _log('   ⚠️ riesgo>=60 -> mostrando notificación');
+            await NotificationHelper.showSmishingAlert(message.address ?? 'Desconocido', res);
+          } else {
+            _log('   riesgo<60 o sin resultado -> NO notifico');
+            // Notificación informativa
+            await NotificationHelper.showSmishingAlert(
+              message.address ?? 'Desconocido', 
+              AnalysisResult(
+                id: 'local',
+                type: 'sms',
+                content: 'sms',
+                aiProbability: res.aiProbability,
+                verdict: res.verdict,
+                details: 'SMS Analizado localmente. Riesgo bajo.',
+                criticalPoints: [],
+                date: DateTime.now(),
+              )
+            );
+          }
         }
       } catch (e, st) {
         _log('   ❌ EXCEPCIÓN analizando: $e');

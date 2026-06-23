@@ -65,6 +65,14 @@ export const analysisService = {
     return response.data.datos!
   },
 
+  async analizarCodigo(codigo: string, lenguaje?: string): Promise<AnalisisResultado> {
+    const response = await api.post<RespuestaApi<AnalisisResultado>>('/analisis/codigo/', {
+      codigo,
+      ...(lenguaje && lenguaje !== 'auto' ? { lenguaje } : {}),
+    })
+    return response.data.datos!
+  },
+
   async analizarArchivo(archivo: File): Promise<AnalisisResultado> {
     const formData = new FormData()
     formData.append('archivo', archivo)

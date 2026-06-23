@@ -12,23 +12,42 @@ Configurable por entorno: AUDIO_DETECTOR_MODEL.
 import numpy as np
 from decouple import config
 
-# Etiquetas que cuentan como "voz sintética / IA" según el modelo en uso.
-ETIQUETAS_FAKE = ['fake', 'aivoice', 'spoof', 'synthetic', 'label_1']
+# Etiquetas que cuentan como "voz sintética / IA" según el modelo de visión.
+ETIQUETAS_FAKE = ['fake', 'aivoice', 'spoof', 'synthetic', 'label_1', '1']
 
 _PIPE = None
 
 
 def cargar_pipeline():
-    """Carga perezosa (una sola vez) del pipeline de clasificación de audio.
-    El import de transformers/torch ocurre acá, solo cuando se usa de verdad."""
+    """Carga perezosa (una sola vez) del pipeline de visión para audio.
+    El import ocurre acá, solo cuando se usa de verdad."""
     global _PIPE
     if _PIPE is None:
         from transformers import pipeline
-        modelo = config('AUDIO_DETECTOR_MODEL', default='MelodyMachine/Deepfake-audio-detection-V2')
-        print(f"[AUDIO] Cargando modelo local: {modelo} ...")
-        _PIPE = pipeline("audio-classification", model=modelo)
-        print("[AUDIO] Modelo de audio cargado (local, sin API de HF).")
+        import os
+        from django.conf import settings
+        
+        base_dir = getattr(settings, 'BASE_DIR', os.getcwd())
+        modelo_path = os.path.join(base_dir, 'models', 'scammer_audio_vision_v2')
+        
+        modelo = config('AUDIO_DETECTOR_MODEL', default=modelo_path)
+        print(f"[AUDIO-VISION] Cargando modelo local de espectrogramas: {modelo} ...")
+        _PIPE = pipeline("image-classification", model=modelo)
+        print("[AUDIO-VISION] Modelo de espectrogramas cargado exitosamente.")
     return _PIPE
+
+def audio_to_image(audio_array, sr=16000):
+    import librosa
+    from PIL import Image
+    # Convertir el arreglo de audio a espectrograma
+    S = librosa.feature.melspectrogram(y=np.array(audio_array, dtype=float), sr=sr, n_mels=128, fmax=8000)
+    S_dB = librosa.power_to_db(S, ref=np.max)
+    
+    # Normalizar los decibelios a píxeles (0-255) para crear la imagen de calor
+    img_array = 255 * (S_dB - S_dB.min()) / (S_dB.max() - S_dB.min() + 1e-8)
+    img = Image.fromarray(img_array.astype(np.uint8)).convert("RGB")
+    img = img.resize((224, 224)) # Tamaño estándar para ResNet
+    return img
 
 
 def _resample_compat(resampler, frame):
@@ -95,9 +114,8 @@ def prob_fake(salida) -> float:
 
 
 def analizar_segmentos(audio_data, sr, pipe=None, max_segmentos=10, corte_temprano=90.0):
-    """Parte el audio en segmentos de 3 s (máx `max_segmentos`), clasifica cada uno
-    y devuelve el PICO de probabilidad de 'fake' en % (0..100).
-    `pipe` es inyectable para poder testear sin cargar el modelo real."""
+    """Parte el audio en segmentos de 3 s (máx `max_segmentos`), convierte a imagen
+    y devuelve el PICO de probabilidad de 'fake' en % (0..100)."""
     if pipe is None:
         pipe = cargar_pipeline()
     muestras_3s = 3 * sr
@@ -109,12 +127,19 @@ def analizar_segmentos(audio_data, sr, pipe=None, max_segmentos=10, corte_tempra
         seg = audio_data[i * muestras_3s:(i + 1) * muestras_3s]
         if len(seg) < (sr * 0.5):
             continue
-        salida = pipe({"array": seg, "sampling_rate": sr})
-        pico = prob_fake(salida) * 100
-        if pico > max_prob:
-            max_prob = pico
-        if max_prob > corte_temprano:
-            break
+        try:
+            # 1. Convertir segmento de audio a imagen (Espectrograma)
+            img = audio_to_image(seg, sr)
+            # 2. Pasar la imagen por el modelo ResNet de visión
+            salida = pipe(img)
+            pico = prob_fake(salida) * 100
+            if pico > max_prob:
+                max_prob = pico
+            if max_prob > corte_temprano:
+                break
+        except Exception as e:
+            print(f"[AUDIO-VISION] Error analizando segmento: {e}")
+            
     return max_prob
 
 

@@ -6,11 +6,13 @@ import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../models/analysis.dart';
 import '../services/sms_monitor_service.dart';
+import '../services/monitor_prefs_service.dart';
 
 class _Item {
-  final SmsMessage msg;
+  final String address;
+  final String body;
   final AnalysisResult? res;
-  _Item(this.msg, this.res);
+  _Item({required this.address, required this.body, this.res});
 }
 
 class SmsMonitorScreen extends StatefulWidget {
@@ -29,10 +31,35 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
   void initState() {
     super.initState();
     _active = SmsMonitorService.isStarted;
+    _loadHistory();
     SmsMonitorService.onAnalyzed = (msg, res) {
       print('[SMS-MON] (PANTALLA) onAnalyzed recibido: ${msg.address} -> prob=${res?.aiProbability} ${res?.veredicto}');
-      if (mounted) setState(() => _feed.insert(0, _Item(msg, res)));
+      if (mounted) setState(() => _feed.insert(0, _Item(address: msg.address ?? 'Desconocido', body: msg.body ?? '', res: res)));
     };
+  }
+
+  Future<void> _loadHistory() async {
+    final hist = await MonitorPrefsService.getSmsHistory();
+    if (!mounted) return;
+    setState(() {
+      _feed.clear();
+      for (final h in hist) {
+        _feed.add(_Item(
+          address: h['address'] ?? 'Desconocido',
+          body: h['body'] ?? '',
+          res: AnalysisResult(
+            id: 'local',
+            type: 'sms',
+            content: 'sms',
+            aiProbability: (h['prob'] as num?)?.toDouble() ?? 0.0,
+            verdict: h['veredicto'],
+            details: '',
+            criticalPoints: [],
+            date: DateTime.now(),
+          )
+        ));
+      }
+    });
   }
 
   @override
@@ -56,7 +83,17 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
     }
     SmsMonitorService.start();
     print('[SMS-MON] (PANTALLA) start() ejecutado, isStarted=${SmsMonitorService.isStarted}');
+    // ✅ Guardar estado persistente
+    await MonitorPrefsService.setSmsEnabled(true);
     setState(() => _active = true);
+  }
+
+  Future<void> _deactivate() async {
+    print('[SMS-MON] (PANTALLA) usuario tocó DESACTIVAR MONITOREO');
+    SmsMonitorService.stop();
+    // ✅ Limpiar estado persistente
+    await MonitorPrefsService.setSmsEnabled(false);
+    if (mounted) setState(() => _active = false);
   }
 
   Color _riskColor(AnalysisResult? res) {
@@ -141,6 +178,23 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
                         ),
                       ),
                     ],
+                    if (_active) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _deactivate,
+                          icon: const Icon(LucideIcons.shieldOff, size: 16, color: AppColors.accent),
+                          label: const Text('DESACTIVAR MONITOREO',
+                              style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: AppColors.accent),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -178,7 +232,7 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Expanded(
-                                      child: Text(item.msg.address ?? 'Desconocido',
+                                      child: Text(item.address,
                                           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
                                     ),
                                     Container(
@@ -193,7 +247,7 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 6),
-                                Text(item.msg.body ?? '',
+                                Text(item.body,
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.3)),

@@ -1,98 +1,27 @@
 """
-Detector de código generado por IA — Vía B (perplejidad).
+Detector de código generado por IA — Vía API de OpenAI.
 
-Mide qué tan "predecible" es un fragmento de código bajo un modelo de lenguaje
-de código. El código generado por IA tiende a tener BAJA perplejidad (muy
-predecible); el código humano idiosincrático tiende a tener perplejidad más
-alta.
-
-OJO (honestidad del producto): no es infalible. Código corto o muy idiomático
-(por ejemplo un CRUD estándar) puede dar falsos positivos. Por eso devolvemos
-probabilidad + perplejidad + una zona "INCONCLUSO", nunca un binario duro, y
-marcamos los fragmentos demasiado cortos como no concluyentes.
-
-El modelo se carga de forma PEREZOSA la primera vez que se usa (descarga ~1 GB
-desde Hugging Face) y se cachea en memoria. No se importa torch a nivel de
-módulo para no encarecer el arranque ni romper entornos sin las dependencias.
-
-Configurable por variables de entorno:
-  CODE_DETECTOR_MODEL      (def: Qwen/Qwen2.5-Coder-0.5B)
-  CODE_DETECTOR_PPL_LOW    (def: 1.8)  -> <= esto: muy probable IA
-  CODE_DETECTOR_PPL_HIGH   (def: 4.0)  -> >= esto: muy probable humano
-  CODE_DETECTOR_MIN_CHARS  (def: 80)   -> menos que esto: fragmento insuficiente
-  CODE_DETECTOR_MAX_TOKENS (def: 1024) -> truncado para inferencia
+Analiza fragmentos de código llamando a gpt-4o-mini a través de la API oficial
+de OpenAI. Esto es más rápido, fiable y no requiere resolver hosts externos con
+parches de DNS. El token se lee de OPENAI_TOKEN en el archivo .env.
 """
+import json
+import requests
 from typing import Optional
 from decouple import config
 
-MODELO = config('CODE_DETECTOR_MODEL', default='Qwen/Qwen2.5-Coder-0.5B')
-PPL_LOW = config('CODE_DETECTOR_PPL_LOW', default=1.8, cast=float)
-PPL_HIGH = config('CODE_DETECTOR_PPL_HIGH', default=4.0, cast=float)
+MODELO = config('OPENAI_CODE_MODEL', default='gpt-4o-mini')
 MIN_CHARS = config('CODE_DETECTOR_MIN_CHARS', default=80, cast=int)
-MAX_TOKENS = config('CODE_DETECTOR_MAX_TOKENS', default=1024, cast=int)
 
 ESTADO_OK = 'OK'
 ESTADO_INSUFICIENTE = 'INSUFICIENTE'
 ESTADO_MOTOR = 'MOTOR_NO_DISPONIBLE'
 
-_tokenizer = None
-_model = None
-_torch = None
-
-
-def _cargar_modelo():
-    """Carga perezosa del modelo + tokenizer. Lanza RuntimeError si no se puede."""
-    global _tokenizer, _model, _torch
-    if _model is not None:
-        return
-    try:
-        import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-    except Exception as e:  # dependencias ausentes
-        raise RuntimeError(f'Dependencias del detector no disponibles: {e}')
-    try:
-        _torch = torch
-        _tokenizer = AutoTokenizer.from_pretrained(MODELO)
-        _model = AutoModelForCausalLM.from_pretrained(MODELO)
-        _model.eval()
-    except Exception as e:  # falla de descarga/carga del modelo
-        _tokenizer = _model = _torch = None
-        raise RuntimeError(f'No se pudo cargar el modelo "{MODELO}": {e}')
-
-
-def perplejidad(codigo: str) -> float:
-    """Perplejidad media por token del código bajo el modelo de código."""
-    _cargar_modelo()
-    enc = _tokenizer(codigo, return_tensors='pt', truncation=True, max_length=MAX_TOKENS)
-    input_ids = enc.input_ids
-    with _torch.no_grad():
-        salida = _model(input_ids, labels=input_ids)
-    # salida.loss = entropía cruzada media por token (log-perplejidad)
-    return float(_torch.exp(salida.loss).item())
-
-
-def _puntuar(ppl: float) -> tuple[float, str]:
-    """
-    Convierte perplejidad -> (probabilidad_ia en %, veredicto).
-    Función PURA: testeable sin el modelo.
-    """
-    if PPL_HIGH <= PPL_LOW:
-        fraccion = 0.5
-    else:
-        fraccion = 1.0 - (ppl - PPL_LOW) / (PPL_HIGH - PPL_LOW)
-    fraccion = max(0.0, min(1.0, fraccion))
-    prob = round(fraccion * 100, 2)
-    if prob >= 60:
-        veredicto = 'CÓDIGO SINTÉTICO'
-    elif prob <= 40:
-        veredicto = 'CÓDIGO HUMANO'
-    else:
-        veredicto = 'INCONCLUSO'
-    return prob, veredicto
+OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
 
 def detectar(codigo: str, lenguaje: Optional[str] = None) -> dict:
-    """Analiza un fragmento de código y devuelve el resultado (sin persistir)."""
+    """Analiza un fragmento de código llamando a la API de OpenAI."""
     codigo = (codigo or '').strip()
     if len(codigo) < MIN_CHARS:
         return {
@@ -103,38 +32,107 @@ def detectar(codigo: str, lenguaje: Optional[str] = None) -> dict:
             'detalles': f'Se necesitan al menos {MIN_CHARS} caracteres para un juicio fiable.',
             'lenguaje': lenguaje,
         }
-    try:
-        ppl = perplejidad(codigo)
-    except RuntimeError as e:
+
+    openai_token = config('OPENAI_TOKEN', default=None)
+    if not openai_token:
         return {
             'estado': ESTADO_MOTOR,
             'probabilidad_ia': 0.0,
             'perplejidad': None,
             'veredicto': 'MOTOR NO DISPONIBLE',
-            'detalles': str(e),
+            'detalles': 'Falta el token de OpenAI (OPENAI_TOKEN) en el archivo .env.',
             'lenguaje': lenguaje,
         }
-    prob, veredicto = _puntuar(ppl)
-    return {
-        'estado': ESTADO_OK,
-        'probabilidad_ia': prob,
-        'perplejidad': round(ppl, 3),
-        'veredicto': veredicto,
-        'detalles': (
-            f'Perplejidad {ppl:.2f} (umbrales: IA <= {PPL_LOW}, humano >= {PPL_HIGH}). '
-            f'Confianza IA: {prob:.1f}%. Umbrales calibrables por entorno.'
-        ),
-        'lenguaje': lenguaje,
-        'modelo': MODELO,
+
+    headers = {
+        'Authorization': f'Bearer {openai_token}',
+        'Content-Type': 'application/json',
     }
+
+    system_prompt = (
+        "Eres un analizador forense de código. Tu tarea es analizar el código proporcionado "
+        "y determinar si fue generado por una Inteligencia Artificial (código sintético/artificial) "
+        "o escrito por un humano (código natural).\n"
+        "Debes responder ÚNICAMENTE con un objeto JSON válido que contenga exactamente los siguientes campos:\n"
+        "{\n"
+        "  \"probabilidad_ia\": <float entre 0.0 y 100.0>,\n"
+        "  \"veredicto\": \"CÓDIGO SINTÉTICO\" | \"CÓDIGO HUMANO\" | \"INCONCLUSO\",\n"
+        "  \"detalles\": \"<explicación breve y concisa de patrones analizados>\"\n"
+        "}\n"
+        "No incluyas explicaciones previas ni posteriores al JSON. Devuelve únicamente el objeto JSON."
+    )
+
+    payload = {
+        'model': MODELO,
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': f'Código a analizar (lenguaje sugerido: {lenguaje or "desconocido"}):\n\n{codigo[:6000]}'},
+        ],
+        'response_format': {'type': 'json_object'},
+        'max_tokens': 512,
+        'temperature': 0.1,
+    }
+
+    try:
+        response = requests.post(OPENAI_URL, json=payload, headers=headers, timeout=30)
+        if response.status_code != 200:
+            return {
+                'estado': ESTADO_MOTOR,
+                'probabilidad_ia': 0.0,
+                'perplejidad': None,
+                'veredicto': 'MOTOR NO DISPONIBLE',
+                'detalles': f'API de OpenAI respondió con código {response.status_code}: {response.text[:300]}',
+                'lenguaje': lenguaje,
+            }
+
+        data = response.json()
+        content = data['choices'][0]['message']['content'].strip()
+
+        # Limpieza por si el modelo incluye marcas de bloque de código markdown
+        if content.startswith('```'):
+            lines = content.splitlines()
+            if lines[0].startswith('```json') or lines[0].startswith('```'):
+                content = '\n'.join(lines[1:-1]).strip()
+
+        res_json = json.loads(content)
+        prob = float(res_json.get('probabilidad_ia', 50.0))
+        veredicto = str(res_json.get('veredicto', 'INCONCLUSO')).upper().strip()
+        detalles = str(res_json.get('detalles', f'Analizado por {MODELO} (OpenAI).'))
+
+        # Normalizar veredicto
+        if 'SINT' in veredicto:
+            veredicto = 'CÓDIGO SINTÉTICO'
+        elif 'HUMAN' in veredicto:
+            veredicto = 'CÓDIGO HUMANO'
+        else:
+            veredicto = 'INCONCLUSO'
+
+        return {
+            'estado': ESTADO_OK,
+            'probabilidad_ia': round(prob, 2),
+            'perplejidad': None,
+            'veredicto': veredicto,
+            'detalles': detalles,
+            'lenguaje': lenguaje,
+            'modelo': MODELO,
+        }
+
+    except Exception as e:
+        return {
+            'estado': ESTADO_MOTOR,
+            'probabilidad_ia': 0.0,
+            'perplejidad': None,
+            'veredicto': 'MOTOR NO DISPONIBLE',
+            'detalles': f'Error al llamar a la API de OpenAI: {str(e)}',
+            'lenguaje': lenguaje,
+        }
 
 
 def analizar_codigo(identificador: str, codigo: str, lenguaje: Optional[str] = None,
                     ip: Optional[str] = None) -> dict:
     """
-    Orquesta el análisis: detecta, persiste (cuando hay resultado real), alimenta
-    el dataset de entrenamiento con veredictos confiables y registra en bitácora.
-    Devuelve un dict listo para el frontend.
+    Orquesta el análisis de código: consulta la API, descuenta intentos, persiste
+    los resultados y notifica a los administradores.
     """
     from .models import Analisis, DatoEntrenamiento
     from .services import BitacoraService, AnalisisService
@@ -143,11 +141,11 @@ def analizar_codigo(identificador: str, codigo: str, lenguaje: Optional[str] = N
     estado = resultado['estado']
 
     puntos = []
-    if resultado.get('perplejidad') is not None:
+    if estado == ESTADO_OK:
         puntos = [{
-            'titulo': 'Perplejidad',
-            'score': resultado['perplejidad'],
-            'descripcion': f"{resultado['probabilidad_ia']:.1f}% prob. IA",
+            'titulo': 'Confianza Forense',
+            'score': resultado['probabilidad_ia'],
+            'descripcion': f"{resultado['probabilidad_ia']:.1f}% probabilidad de IA (OpenAI {MODELO})",
         }]
 
     payload = {
@@ -155,16 +153,15 @@ def analizar_codigo(identificador: str, codigo: str, lenguaje: Optional[str] = N
         'lenguaje': lenguaje,
         'contenido': codigo[:4000],
         'probabilidadIA': resultado['probabilidad_ia'],
-        'perplejidad': resultado.get('perplejidad'),
+        'perplejidad': None,
         'veredicto': resultado['veredicto'],
         'detalles': resultado['detalles'],
         'puntosCriticos': puntos,
         'estado': estado,
     }
 
-    # Solo persistimos un análisis real (con probabilidad numérica)
     if estado == ESTADO_OK:
-        # Consumir un intento liviano, igual que el resto de analizadores
+        # Consumir intento liviano
         permitido, err = AnalisisService.verificar_y_descontar_intentos(identificador, es_pesado=False)
         if not permitido:
             raise Exception(err)
@@ -182,7 +179,7 @@ def analizar_codigo(identificador: str, codigo: str, lenguaje: Optional[str] = N
             payload['id'] = str(analisis.id)
             payload['fecha'] = analisis.fecha_creacion.isoformat()
 
-            # Alimentar el dataset SOLO con veredictos confiables (evita ruido del "INCONCLUSO")
+            # Alimentar el dataset con veredictos confiables
             prob = resultado['probabilidad_ia']
             if prob >= 60 or prob <= 40:
                 DatoEntrenamiento(

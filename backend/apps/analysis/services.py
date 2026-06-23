@@ -39,6 +39,18 @@ try:
 except Exception as e:
     print(f"[FIREBASE] Error de inicialización: {e}")
 
+# ==========================================================
+# MODELO LOCAL DE TEXTO (Carga global en memoria)
+# ==========================================================
+try:
+    text_model_path = "./models/text_detector/final_model"
+    text_classifier = pipeline("text-classification", model=text_model_path, tokenizer=text_model_path)
+    print(f"[SCAMMER-TEXT] Modelo cargado en memoria exitosamente.")
+except Exception as e:
+    print(f"[SCAMMER-TEXT] Error al cargar modelo local: {e}")
+    text_classifier = None
+
+
 class StorageService:
     """Servicio para interactuar con Supabase Storage"""
     @staticmethod
@@ -183,17 +195,20 @@ class AnalisisService:
         permitido, error = AnalisisService.verificar_y_descontar_intentos(id_identificador, es_pesado=False)
         if not permitido: raise Exception(error)
             
-        sapling_key = config('SAPLING_API_KEY')
         try:
-            url = "https://api.sapling.ai/api/v1/aidetect"
-            payload = {"key": sapling_key, "text": texto_limpio}
-            headers = {"Content-Type": "application/json"}
+            if not text_classifier:
+                raise Exception("MOTOR_TEXTO_NO_DISPONIBLE")
             
-            with requests.post(url, json=payload, headers=headers, timeout=20) as response:
-                if response.status_code != 200:
-                    print(f"[SAPLING ERROR] {response.status_code}: {response.text}")
-                    raise Exception("ERROR_MOTOR_TEXTO")
-                prob = response.json().get('score', 0) * 100
+            # Recortar texto a max 512 tokens aprox para no exceder BERT (usamos 2000 caracteres)
+            res = text_classifier(texto_limpio[:2000])[0]
+            # label_0 = Humano, label_1 = IA (según nuestro entrenamiento)
+            prob = res['score'] * 100
+            if res['label'] == 'LABEL_0':
+                prob = 100 - prob # Convertir a probabilidad de IA
+                
+        except Exception as e:
+            print(f"[LOCAL MODEL ERROR] {e}")
+            raise Exception("ERROR_MOTOR_TEXTO")
             
             DatoEntrenamiento(contenido=texto_limpio, etiqueta=1 if prob > 50 else 0, confianza_original=prob).save()
             analisis = Analisis(
@@ -202,7 +217,7 @@ class AnalisisService:
                 contenido=texto[:2000],
                 probabilidad_ia=round(prob, 2),
                 veredicto="SÍNTESIS DETECTADA" if prob > 50 else "ORIGEN NATURAL",
-                detalles=f"Confianza IA: {prob:.2f}% (Sapling Engine)",
+                detalles=f"Confianza IA: {prob:.2f}% (Scammer-Text-v1)",
                 nombre_archivo=nombre_archivo,
                 extension=extension,
                 puntos_criticos=[{"titulo": "Score Neuronal", "descripcion": f"{prob:.2f}%"}]
@@ -549,32 +564,12 @@ class AnalisisService:
         peso_archivo_mb = archivo.size / (1024 * 1024)
         
         try:
-            import gc, torch, librosa, numpy as np, subprocess, tempfile
-            archivo.seek(0)
-            audio_data, sr = librosa.load(io.BytesIO(archivo.read()), sr=16000)
-            muestras_3s = 3 * sr
-            num_segs = int(np.ceil(len(audio_data) / muestras_3s))
-            num_segs = min(num_segs, 10)
-            max_prob_total = 0
+            from . import audio_detector
+            import gc
             
-            for i in range(num_segs):
-                seg = audio_data[i*muestras_3s:(i+1)*muestras_3s]
-                if len(seg) < (sr * 0.5): continue
-                
-                buffer_audio = io.BytesIO()
-                import soundfile as sf
-                sf.write(buffer_audio, seg, sr, format='WAV')
-                audio_bytes_seg = buffer_audio.getvalue()
-
-                res1 = AnalisisService.query_hf_api("MelodyMachine/Deepfake-audio-detection-V2", audio_bytes_seg)
-                pr1 = next((r['score'] for r in res1 if isinstance(r, dict) and r.get('label', '').lower() in ['fake', 'aivoice', 'spoof', 'label_1']), 0)
-                
-                res2 = AnalisisService.query_hf_api("garystafford/wav2vec2-deepfake-voice-detector", audio_bytes_seg)
-                pr2 = next((r['score'] for r in res2 if isinstance(r, dict) and r.get('label', '').lower() in ['fake', 'label_1', 'synthetic']), 0)
-                
-                pico = max(pr1, pr2) * 100
-                if pico > max_prob_total: max_prob_total = pico
-                if max_prob_total > 90: break
+            archivo.seek(0)
+            audio_data, sr = audio_detector.cargar_audio(archivo.read(), sr=16000)
+            max_prob_total = audio_detector.analizar_segmentos(audio_data, sr)
             
             gc.collect()
             dom_p = max_prob_total if max_prob_total > 50 else (100 - max_prob_total)

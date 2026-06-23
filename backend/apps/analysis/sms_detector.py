@@ -1,15 +1,14 @@
 """
-Detector de SMS generados por IA.
+Detector de SMS generados por IA — Motor: OpenAI.
 
-El proyecto detecta contenido GENERADO POR IA (no fraude). Un SMS es texto, así
-que se evalúa con el mismo motor que el análisis de texto (Sapling aidetect), que
-devuelve una probabilidad de que el mensaje haya sido escrito por una IA.
+Analiza si un SMS fue generado por IA utilizando la API de OpenAI (gpt-4o-mini).
+Sapling se reserva exclusivamente para el análisis de TEXTOS y DOCUMENTOS largos.
 
-Nota: en mensajes muy cortos la detección de texto-IA es poco fiable, por eso los
-mensajes por debajo de MIN_CHARS se marcan como "insuficientes" y no se evalúan.
+Nota: en mensajes muy cortos la detección es poco fiable, por eso los mensajes
+por debajo de MIN_CHARS se marcan como "insuficientes" y no se evalúan.
 
-(Las funciones y listas de heurística de fraude más abajo quedaron SIN USO al
-cambiar el enfoque a IA; se conservan por si se quisieran reutilizar.)
+(Las funciones y listas de heurística de fraude más abajo se conservan como
+señales de contexto para el prompt de OpenAI; pueden reutilizarse.)
 """
 import re
 from typing import Optional
@@ -153,28 +152,65 @@ def _reputacion_urls(urls: list) -> Optional[dict]:
 
 
 def _detectar_ia(texto: str) -> tuple:
-    """Detecta si el texto fue generado por IA usando Sapling (el MISMO motor que
-    usa el análisis de texto). Devuelve (probabilidad_ia 0-100, veredicto, detalles)."""
+    """Detecta si el SMS fue generado por IA usando OpenAI (gpt-4o-mini).
+    Devuelve (probabilidad_ia 0-100, veredicto, detalles).
+    NOTA: Sapling se reserva para TEXTO/DOCUMENTOS. SMS usa OpenAI."""
+    import json
     import requests
-    sapling_key = config('SAPLING_API_KEY', default='')
-    if not sapling_key:
+    from decouple import config
+
+    openai_token = config('OPENAI_TOKEN', default=None)
+    if not openai_token:
         raise Exception('ERROR_MOTOR_TEXTO')
+
+    modelo = config('OPENAI_SMS_MODEL', default='gpt-4o-mini')
+    headers = {
+        'Authorization': f'Bearer {openai_token}',
+        'Content-Type': 'application/json',
+    }
+    system_prompt = (
+        "Eres un detector forense de SMS generados por inteligencia artificial. "
+        "Tu tarea es analizar el mensaje proporcionado y estimar la probabilidad de que haya sido "
+        "escrito por una IA (en lugar de un humano real). "
+        "También debes detectar señales de smishing (fraude por SMS): urgencia, solicitud de datos, "
+        "enlaces sospechosos, suplantación de identidad, etc.\n"
+        "Responde ÚNICAMENTE con un JSON válido con los siguientes campos:\n"
+        "{\n"
+        "  \"probabilidad_ia\": <float 0.0-100.0 — qué tan probable es que sea texto generado por IA>,\n"
+        "  \"veredicto\": \"SÍNTESIS DETECTADA\" | \"ORIGEN NATURAL\",\n"
+        "  \"detalles\": \"<explicación breve de los patrones detectados>\"\n"
+        "}\n"
+        "No incluyas texto adicional, sólo el JSON."
+    )
+    payload = {
+        'model': modelo,
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': f'SMS a analizar:\n\n{texto[:1500]}'},
+        ],
+        'response_format': {'type': 'json_object'},
+        'max_tokens': 256,
+        'temperature': 0.1,
+    }
     try:
-        with requests.post(
-            'https://api.sapling.ai/api/v1/aidetect',
-            json={'key': sapling_key, 'text': texto},
-            headers={'Content-Type': 'application/json'},
-            timeout=20,
-        ) as r:
-            if r.status_code != 200:
-                print(f'[SMS/SAPLING ERROR] {r.status_code}: {r.text}')
-                raise Exception('ERROR_MOTOR_TEXTO')
-            prob = round(r.json().get('score', 0) * 100, 2)
+        resp = requests.post('https://api.openai.com/v1/chat/completions',
+                             json=payload, headers=headers, timeout=25)
+        if resp.status_code != 200:
+            print(f'[SMS/OPENAI ERROR] {resp.status_code}: {resp.text[:200]}')
+            raise Exception('ERROR_MOTOR_TEXTO')
+        content = resp.json()['choices'][0]['message']['content'].strip()
+        if content.startswith('```'):
+            lines = content.splitlines()
+            content = '\n'.join(lines[1:-1]).strip()
+        res_json = json.loads(content)
+        prob = round(float(res_json.get('probabilidad_ia', 50.0)), 2)
+        veredicto = 'SÍNTESIS DETECTADA' if prob > 50 else 'ORIGEN NATURAL'
+        detalles = str(res_json.get('detalles', f'Confianza IA: {prob:.2f}% (OpenAI {modelo})'))
+        return prob, veredicto, detalles
     except Exception as e:
-        print(f'[SMS/SAPLING] {e}')
+        print(f'[SMS/OPENAI] {e}')
         raise Exception('ERROR_MOTOR_TEXTO')
-    veredicto = 'SÍNTESIS DETECTADA' if prob > 50 else 'ORIGEN NATURAL'
-    return prob, veredicto, f'Confianza IA: {prob:.2f}% (Sapling Engine)'
+
 
 
 def detectar(texto: str, remitente: Optional[str] = None) -> dict:

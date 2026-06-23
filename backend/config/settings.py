@@ -70,7 +70,7 @@ DATABASES = {
 
 # MongoDB
 MONGO_URI = config('MONGO_URI', default='mongodb://localhost:27017')
-MONGO_DB_NAME = config('MONGO_DB_NAME', default='sw1_proyecto_grupal_db')
+MONGO_DB_NAME = config('MONGO_DB_NAME', default='scammer_ia')
 
 import mongoengine
 mongoengine.connect(db=MONGO_DB_NAME, host=MONGO_URI)
@@ -93,13 +93,7 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
 
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    # 5180 = puerto fijo del frontend de Scammer (5173/5174 los usa water1)
-    default='http://localhost:5173,http://localhost:5174,http://localhost:5180,http://127.0.0.1:5180',
-    cast=Csv(),
-)
-
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = False
 
 CSRF_TRUSTED_ORIGINS = [

@@ -5,7 +5,6 @@ import { useAnonimo } from '../hooks/useAnonimo'
 import { useTheme } from '../contexts/ThemeContext'
 import { analysisService } from '../services/analysisService'
 import type { AnalisisResultado } from '../services/analysisService'
-import { codigoService } from '../services/codigoService'
 import { 
   ShieldCheck, 
   UploadCloud, 
@@ -21,7 +20,6 @@ import {
   BrainCircuit, 
   Fingerprint, 
   X,
-  Code,
   Globe,
   Video,
   Music,
@@ -40,7 +38,7 @@ const PLAN_LIMITS = {
   elite: { livianos: 999999, pesados: 999999 },
 }
 
-type TabType = 'INTELIGENCIA' | 'ARCHIVOS' | 'IMAGEN' | 'VIDEO' | 'AUDIO' | 'RED' | 'CODIGO'
+type TabType = 'INTELIGENCIA' | 'CODIGO' | 'ARCHIVOS' | 'IMAGEN' | 'VIDEO' | 'AUDIO' | 'RED'
 
 export function AnalysisCenter() {
   const { usuario } = useAuth()
@@ -54,12 +52,14 @@ export function AnalysisCenter() {
   const [tabActiva, setTabActiva] = useState<TabType>('INTELIGENCIA')
   
   const [texto, setTexto] = useState('')
-  const [codigo, setCodigo] = useState('')
-  const [lenguaje, setLenguaje] = useState('auto')
+  const [codigoText, setCodigoText] = useState('')
+  const [codigoLang, setCodigoLang] = useState('auto')
   const [archivo, setArchivo] = useState<File | null>(null)
   const [url, setUrl] = useState('')
   const [showLimitModal, setShowLimitModal] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const LANGS = ['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql']
 
   if (usuario?.rol === 'administrador') return <Navigate to="/admin" replace />
 
@@ -139,36 +139,12 @@ export function AnalysisCenter() {
     try {
       let res: AnalisisResultado
 
-      if (tabActiva === 'CODIGO') {
-        const r = await codigoService.analizar(codigo, lenguaje === 'auto' ? undefined : lenguaje)
-        if (!r.ok || !r.data) {
-          if (r.error === 'LIMITE_ALCANZADO' || r.error?.includes('LIMITE')) setShowLimitModal(true)
-          else alert(r.error || 'Error en el análisis de código.')
-          return
-        }
-        if (r.data.estado !== 'OK') {
-          alert(r.data.detalles)
-          return
-        }
-        const d = r.data
-        setResultado({
-          id: d.id || 'CODIGO',
-          tipo: 'codigo',
-          probabilidadIA: d.probabilidadIA,
-          veredicto: d.veredicto,
-          detalles: d.detalles,
-          puntosCriticos: (d.puntosCriticos || []).map(p => ({ titulo: p.titulo, descripcion: p.descripcion ?? '', score: p.score })),
-          fecha: d.fecha || new Date().toISOString(),
-          contenido: d.contenido ?? codigo,
-        })
-        setVista('results')
-        if (!usuario) await recargarAnonimo()
-        return
-      }
-
       if (tabActiva === 'INTELIGENCIA' && texto.trim()) {
         res = await analysisService.analizarTexto(texto)
-      } 
+      }
+      else if (tabActiva === 'CODIGO' && codigoText.trim()) {
+        res = await analysisService.analizarCodigo(codigoText, codigoLang)
+      }
       else if (tabActiva === 'ARCHIVOS' && archivo) {
         res = await analysisService.analizarArchivo(archivo)
       }
@@ -224,19 +200,19 @@ export function AnalysisCenter() {
           <div className="scan-line hidden group-hover:block" style={{ background: 'var(--accent)', boxShadow: '0 0 15px var(--accent)' }}></div>
           
           <div className="flex p-4 gap-2 border-b border-[var(--border-color)] bg-black/10">
-            {(['INTELIGENCIA', 'ARCHIVOS', 'IMAGEN', 'VIDEO', 'AUDIO', 'RED', 'CODIGO'] as TabType[]).map(t => (
+            {(['INTELIGENCIA', 'CODIGO', 'ARCHIVOS', 'IMAGEN', 'VIDEO', 'AUDIO', 'RED'] as TabType[]).map(t => (
                 <button 
                   key={t}
                   onClick={() => { setTabActiva(t); setArchivo(null); }}
                   className={`flex-1 py-4 rounded-xl text-[9px] font-black tracking-widest flex flex-col items-center gap-2 transition-all ${tabActiva === t ? 'bg-[var(--accent)] text-white shadow-[0_0_20px_rgba(255,0,85,0.3)]' : 'text-[var(--text-muted)] hover:bg-white/5 hover:text-[var(--text-main)]'}`}
                 >
                   {t === 'INTELIGENCIA' && <FileText size={16} />}
+                  {t === 'CODIGO' && <FileCode size={16} />}
                   {t === 'ARCHIVOS' && <FileCode size={16} />}
                   {t === 'IMAGEN' && <ImageIcon size={16} />}
                   {t === 'VIDEO' && <Video size={16} />}
                   {t === 'AUDIO' && <Music size={16} />}
                   {t === 'RED' && <Globe size={16} />}
-                  {t === 'CODIGO' && <Code size={16} />}
                   {t === 'RED' ? 'SITIOS WEB' : t === 'AUDIO' ? 'VOZ/AUDIO' : t === 'CODIGO' ? 'CÓDIGO' : t}
                 </button>
             ))}
@@ -250,6 +226,29 @@ export function AnalysisCenter() {
                 placeholder="Pegue rastro digital de texto para análisis de perplejidad..." 
                 className="w-full h-72 bg-white/[0.03] border border-[var(--border-color)] rounded-[32px] p-8 text-[var(--text-main)] text-lg font-bold placeholder:opacity-10 focus:outline-none focus:border-[var(--accent)] transition-all resize-none custom-scrollbar"
               />
+            )}
+
+            {tabActiva === 'CODIGO' && (
+              <div className="w-full space-y-4">
+                <div className="flex items-center gap-4">
+                  <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Lenguaje:</span>
+                  <select
+                    value={codigoLang}
+                    onChange={(e) => setCodigoLang(e.target.value)}
+                    className="bg-white/[0.05] border border-[var(--border-color)] rounded-xl px-4 py-2 text-[var(--text-main)] text-[10px] font-black uppercase outline-none focus:border-[var(--accent)] transition-all"
+                  >
+                    {LANGS.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+                  </select>
+                  <span className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-auto">Motor: OpenAI GPT-4o-mini</span>
+                </div>
+                <textarea 
+                  value={codigoText}
+                  onChange={(e) => setCodigoText(e.target.value)}
+                  placeholder="// Pega aquí el código fuente a analizar..."
+                  className="w-full h-60 bg-white/[0.03] border border-[var(--border-color)] rounded-[32px] p-8 text-[var(--text-main)] text-sm font-mono font-bold placeholder:opacity-10 focus:outline-none focus:border-[var(--accent)] transition-all resize-none custom-scrollbar"
+                />
+                <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest text-center">La detección de código IA no es 100% fiable: es un indicio, no una acusación.</p>
+              </div>
             )}
 
             {(tabActiva === 'ARCHIVOS' || tabActiva === 'IMAGEN' || tabActiva === 'VIDEO' || tabActiva === 'AUDIO') && (
@@ -318,36 +317,13 @@ export function AnalysisCenter() {
               </div>
             )}
 
-            {tabActiva === 'CODIGO' && (
-              <div className="w-full space-y-4">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.3em]">Pegue código fuente para análisis de perplejidad</p>
-                  <select
-                    value={lenguaje}
-                    onChange={(e) => setLenguaje(e.target.value)}
-                    className="bg-white/[0.03] border border-[var(--border-color)] text-[var(--text-main)] rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-[var(--accent)] cursor-pointer appearance-none shrink-0"
-                  >
-                    {['auto', 'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql'].map(l => (
-                      <option key={l} value={l}>{l.toUpperCase()}</option>
-                    ))}
-                  </select>
-                </div>
-                <textarea
-                  value={codigo}
-                  onChange={(e) => setCodigo(e.target.value)}
-                  spellCheck={false}
-                  placeholder="// Pegue una función o archivo de código fuente..."
-                  className="w-full h-72 bg-white/[0.03] border border-[var(--border-color)] rounded-[32px] p-8 text-[var(--text-main)] text-[13px] font-mono placeholder:opacity-10 focus:outline-none focus:border-[var(--accent)] transition-all resize-none custom-scrollbar"
-                />
-                <p className="text-[9px] text-[var(--text-muted)] text-center font-black uppercase tracking-[0.3em] leading-relaxed">
-                  La detección de código IA no es 100% fiable: tómelo como indicio, no como acusación.
-                </p>
-              </div>
-            )}
-
             <button 
               onClick={handleAnalizar}
-              disabled={cargando || (tabActiva === 'INTELIGENCIA' ? !texto.trim() : tabActiva === 'RED' ? !url.trim() : tabActiva === 'CODIGO' ? !codigo.trim() : !archivo)}
+              disabled={cargando || (
+                tabActiva === 'INTELIGENCIA' ? !texto.trim() :
+                tabActiva === 'CODIGO' ? !codigoText.trim() :
+                tabActiva === 'RED' ? !url.trim() : !archivo
+              )}
               className="btn-primary mt-12 px-20 py-6 rounded-2xl text-xs font-black tracking-[0.4em] uppercase transition-all flex items-center gap-3 disabled:opacity-10 cursor-pointer"
               style={{ background: theme === 'light' ? 'var(--text-main)' : 'white', color: theme === 'light' ? 'var(--bg)' : 'black' }}
             >
@@ -397,7 +373,7 @@ export function AnalysisCenter() {
              <h4 className="text-[10px] font-black text-[var(--text-main)] uppercase tracking-widest mb-6 border-b border-[var(--border-color)] pb-4 italic">Soporte Técnico</h4>
              <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center gap-3"><FileText size={14} className="text-cyan-400"/> <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">PDF/DOCX</span></div>
-                <div className="flex items-center gap-3"><Code size={14} className="text-cyan-400"/> <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">CODE/PY</span></div>
+                
                 <div className="flex items-center gap-3"><ImageIcon size={14} className="text-[var(--accent)]"/> <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">JPG/PNG</span></div>
                 <div className="flex items-center gap-3"><Video size={14} className="text-[var(--accent)]"/> <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">MP4/MOV</span></div>
              </div>
@@ -423,7 +399,7 @@ export function AnalysisCenter() {
               <span className="w-3 h-3 bg-[var(--accent)] rounded-full shadow-[0_0_100px_var(--accent-glow)]"></span>
               <span className="text-[10px] font-black text-[var(--accent)] uppercase tracking-[0.5em]">Reporte Técnico Final</span>
             </div>
-            <h1 className="text-6xl font-black text-[var(--text-main)] uppercase tracking-tighter italic leading-none">ID_#{resultado.id.slice(-8).toUpperCase()}</h1>
+            <h1 className="text-6xl font-black text-[var(--text-main)] uppercase tracking-tighter italic leading-none">ID_#{(resultado.id ?? 'PENDIENTE').slice(-8).toUpperCase()}</h1>
           </div>
           <div className="flex gap-4">
             <button onClick={() => setVista('dashboard')} className="bg-[var(--accent)] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[var(--accent)]/20 hover:scale-105 transition-all">

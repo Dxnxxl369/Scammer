@@ -53,6 +53,16 @@ class CallMonitorControl {
       serviceId: _serviceId,
       notificationTitle: 'Monitoreando llamadas',
       notificationText: 'Esperando una llamada para grabarla...',
+      notificationButtons: [
+        const NotificationButton(
+          id: 'btn_start_record',
+          text: 'Grabar Ahora',
+        ),
+        const NotificationButton(
+          id: 'btn_stop_service',
+          text: 'Detener Servicio',
+        ),
+      ],
       serviceTypes: [ForegroundServiceTypes.microphone],
       callback: startCallMonitor,
     );

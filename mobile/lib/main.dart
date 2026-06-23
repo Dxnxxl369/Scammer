@@ -18,18 +18,31 @@ import 'screens/sms_monitor_screen.dart';
 import 'models/analysis.dart';
 import 'services/firebase_service.dart';
 import 'services/api_service.dart';
+import 'services/monitor_prefs_service.dart';
+import 'services/battery_optimization_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterForegroundTask.initCommunicationPort();
+
   print('════════════════ SCAMMER MOVIL ════════════════');
   print('[API] Backend en uso => ${ApiService.baseUrl}');
   print('════════════════════════════════════════════════');
+
   await FirebaseService.initialize();
-  // Cargar el tema guardado antes de iniciar la app
+
+  // ── Restaurar monitores que el usuario dejó activos ──────────────────────────
+  // Esto re-inicia el ForegroundService de llamadas y el listener de SMS
+  // aunque el usuario haya cerrado la app o el dispositivo se haya reiniciado.
+  await MonitorPrefsService.restaurar();
+
+  // ── Solicitar excepción de batería (una sola vez, si no está concedida) ──────
+  // Sin esto, Android puede matar el ForegroundService después de ~5 minutos.
+  // El diálogo se muestra solo si el usuario no lo concedió antes.
+  await BatteryOptimizationService.solicitarExcepcion();
+
   runApp(
     MultiProvider(
-
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
       ],
@@ -39,9 +52,6 @@ void main() async {
 }
 
 class ScammerApp extends StatelessWidget {
-
-
-
   const ScammerApp({super.key});
 
   @override
@@ -53,8 +63,8 @@ class ScammerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme(auth.isDarkMode),
       home: (auth.isLoading && auth.user == null)
-        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-        : (auth.user == null ? const LoginScreen() : const DashboardScreen()),
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : (auth.user == null ? const LoginScreen() : const DashboardScreen()),
       routes: {
         '/login': (context) => const LoginScreen(),
         '/dashboard': (context) => const DashboardScreen(),
@@ -65,10 +75,10 @@ class ScammerApp extends StatelessWidget {
         '/admin_finance': (context) => const AdminFinanceScreen(),
         '/admin_settings': (context) => const AdminSettingsScreen(),
         '/notifications': (context) => const NotificationsScreen(),
-        '/analysis_detail': (context) => AnalysisDetailScreen(analysis: ModalRoute.of(context)!.settings.arguments as AnalysisResult),
+        '/analysis_detail': (context) => AnalysisDetailScreen(
+            analysis: ModalRoute.of(context)!.settings.arguments as AnalysisResult),
         '/admin_users': (context) => const AdminUsersScreen(),
         '/sms_monitor': (context) => const SmsMonitorScreen(),
-      
       },
     );
   }
