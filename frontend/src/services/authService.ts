@@ -55,7 +55,10 @@ export const authService = {
       
       // Inyectamos el ID manualmente para obtener el perfil (primera vez)
       const response = await api.get<RespuestaApi<Usuario>>('/auth/yo/', {
-        headers: { 'X-User-ID': userId }
+        headers: { 
+          'X-User-ID': userId,
+          'Authorization': `Bearer ${authData.session?.access_token}`
+        }
       })
       
       // Persistimos el ID para futuras peticiones automáticas
