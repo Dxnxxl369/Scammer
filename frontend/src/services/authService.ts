@@ -75,6 +75,11 @@ export const authService = {
             nombre_usuario: user.email?.split('@')[0],
             nombre_completo: '',
             pais: 'BO',
+          }, {
+            headers: { 
+              'X-User-ID': userId,
+              'Authorization': `Bearer ${authData.session?.access_token}`
+            }
           })
           return { exito: true, datos: response.data.datos }
         } catch (regError: any) {
