@@ -102,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('ACCESO CONCEDIDO: BIENVENIDO AGENTE')),
         );
+        Navigator.pushReplacementNamed(context, '/dashboard');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('ERROR AL VINCULAR CUENTA DE GOOGLE - REVISE LOGS')),
@@ -124,7 +125,12 @@ class _LoginScreenState extends State<LoginScreen> {
     
     if (mounted) {
       setState(() => _isLoggingIn = false);
-      if (!success) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('INICIANDO SESIÓN OK')),
+        );
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('ERROR: CREDENCIALES INVÁLIDAS O ERROR DE RED')),
         );

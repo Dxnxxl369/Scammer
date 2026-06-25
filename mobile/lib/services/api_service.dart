@@ -11,14 +11,16 @@ class ApiService {
   // serviría al isolate de fondo de SMS; por eso la URL vive aquí en código.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.110.191.122:8002/api',          
-     
+    defaultValue: 'https://scammer-ia.duckdns.org/api',          
   );
 
   static Future<Map<String, String>> getHeaders() async {
+    print('✅ [DEBUG API] getHeaders() - Obteniendo SharedPreferences...');
     final prefs = await SharedPreferences.getInstance();
+    print('✅ [DEBUG API] getHeaders() - SharedPreferences obtenido');
     final token = prefs.getString('auth_token');
     final userId = prefs.getString('user_id');
+    print('✅ [DEBUG API] getHeaders() - Token: \${token != null ? "SI" : "NO"} | UserId: \${userId != null ? "SI" : "NO"}');
 
     return {
       'Content-Type': 'application/json',
@@ -48,18 +50,18 @@ class ApiService {
   static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
     final headers = await getHeaders();
     final url = '$baseUrl$endpoint';
-    return _log('POST', url, () => http.post(Uri.parse(url), headers: headers, body: jsonEncode(body)));
+    return _log('POST', url, () => http.post(Uri.parse(url), headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 10)));
   }
 
   static Future<http.Response> get(String endpoint) async {
     final headers = await getHeaders();
     final url = '$baseUrl$endpoint';
-    return _log('GET', url, () => http.get(Uri.parse(url), headers: headers));
+    return _log('GET', url, () => http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 10)));
   }
 
   static Future<http.Response> patch(String endpoint, Map<String, dynamic> body) async {
     final headers = await getHeaders();
     final url = '$baseUrl$endpoint';
-    return _log('PATCH', url, () => http.patch(Uri.parse(url), headers: headers, body: jsonEncode(body)));
+    return _log('PATCH', url, () => http.patch(Uri.parse(url), headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 10)));
   }
 }

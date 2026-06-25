@@ -16,11 +16,14 @@ class AuthProvider extends ChangeNotifier {
   bool get isAdmin => _user?.role == 'administrador';
 
   AuthProvider() {
+    print('✅ [DEBUG] AuthProvider instanciado');
     _init();
   }
 
   Future<void> _init() async {
+    print('✅ [DEBUG] Ejecutando _init() en AuthProvider...');
     await checkSession();
+    print('✅ [DEBUG] _init() finalizado');
   }
 
   void toggleTheme() {
@@ -97,24 +100,31 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> checkSession() async {
+    print('✅ [DEBUG] Entrando a checkSession()...');
     _isLoading = true;
     notifyListeners();
     
     try {
+      print('✅ [DEBUG] Haciendo GET a /auth/yo/');
       final response = await ApiService.get('/auth/yo/');
+      print('✅ [DEBUG] Respuesta recibida de /auth/yo/: \${response.statusCode}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['exito'] == true) {
           _user = UserProfile.fromJson(data['datos']);
           // Vincular dispositivo para notificaciones push
+          print('✅ [DEBUG] Perfil cargado correctamente, inicializando Firebase Push...');
           FirebaseService.registerToken();
         }
       } else {
+        print('✅ [DEBUG] Código de error HTTP: \${response.statusCode}');
         _user = null;
       }
     } catch (e) {
+      print('❌ [DEBUG ERROR EN CHECKSESSION]: \$e');
       _user = null;
     } finally {
+      print('✅ [DEBUG] checkSession() terminando, isLoading = false');
       _isLoading = false;
       notifyListeners();
     }

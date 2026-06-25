@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../models/analysis.dart';
 import '../services/sms_monitor_service.dart';
 import '../services/monitor_prefs_service.dart';
+import '../services/battery_optimization_service.dart';
 
 class _Item {
   final String address;
@@ -81,6 +82,11 @@ class _SmsMonitorScreenState extends State<SmsMonitorScreen> {
       );
       return;
     }
+    
+    // Solicitamos la exclusión de batería recién aquí, cuando el usuario realmente
+    // activó el servicio y no al arrancar la app.
+    await BatteryOptimizationService.solicitarExcepcion();
+
     SmsMonitorService.start();
     print('[SMS-MON] (PANTALLA) start() ejecutado, isStarted=${SmsMonitorService.isStarted}');
     // ✅ Guardar estado persistente
